@@ -16,11 +16,7 @@ import {
   Image as ImageIcon, 
   Eye,
   Search,
-  Filter,
   MoreHorizontal,
-  Copy,
-  Download,
-  Share2,
   Link,
   Tag
 } from 'lucide-react';
@@ -37,20 +33,13 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from '@/components/ui/sheet';
 
 export function MediaTable() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingMedia, setEditingMedia] = useState<MediaItem | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedMedia, setSelectedMedia] = useState<MediaItem | null>(null);
-  const [isDetailSheetOpen, setIsDetailSheetOpen] = useState(false);
+  const [isDetailDialogOpen, setIsDetailDialogOpen] = useState(false);
   const [formData, setFormData] = useState<MediaFormData>({
     title: '',
     description: '',
@@ -117,7 +106,7 @@ export function MediaTable() {
 
   const handleViewDetails = (media: MediaItem) => {
     setSelectedMedia(media);
-    setIsDetailSheetOpen(true);
+    setIsDetailDialogOpen(true);
   };
 
   const handleDelete = async (id: string) => {
@@ -179,10 +168,6 @@ export function MediaTable() {
           </div>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm">
-            <Filter className="mr-2 h-4 w-4" />
-            Filter
-          </Button>
           <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
             <DialogTrigger asChild>
               <Button onClick={() => setIsDialogOpen(true)}>
@@ -332,19 +317,6 @@ export function MediaTable() {
                                 Edit Media
                               </DropdownMenuItem>
                               <DropdownMenuSeparator />
-                              <DropdownMenuItem>
-                                <Copy className="mr-2 h-4 w-4" />
-                                Copy URL
-                              </DropdownMenuItem>
-                              <DropdownMenuItem>
-                                <Download className="mr-2 h-4 w-4" />
-                                Download
-                              </DropdownMenuItem>
-                              <DropdownMenuItem>
-                                <Share2 className="mr-2 h-4 w-4" />
-                                Share
-                              </DropdownMenuItem>
-                              <DropdownMenuSeparator />
                               <DropdownMenuItem 
                                 onClick={() => handleDelete(id)}
                                 className="text-red-600"
@@ -375,15 +347,15 @@ export function MediaTable() {
         </CardContent>
       </Card>
 
-      {/* Media Details Sheet */}
-      <Sheet open={isDetailSheetOpen} onOpenChange={setIsDetailSheetOpen}>
-        <SheetContent className="w-[400px] sm:w-[540px]">
-          <SheetHeader>
-            <SheetTitle>Media Details</SheetTitle>
-            <SheetDescription>
+      {/* Media Details Dialog */}
+      <Dialog open={isDetailDialogOpen} onOpenChange={setIsDetailDialogOpen}>
+        <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Media Details</DialogTitle>
+            <DialogDescription>
               Complete information about the media item
-            </SheetDescription>
-          </SheetHeader>
+            </DialogDescription>
+          </DialogHeader>
           {selectedMedia && (
             <div className="space-y-6 mt-6">
               {/* Image Preview */}
@@ -455,7 +427,7 @@ export function MediaTable() {
                 <Button 
                   onClick={() => {
                     handleEdit(selectedMedia);
-                    setIsDetailSheetOpen(false);
+                    setIsDetailDialogOpen(false);
                   }}
                   className="flex-1"
                 >
@@ -468,14 +440,14 @@ export function MediaTable() {
                     navigator.clipboard.writeText(selectedMedia.imageUrl);
                   }}
                 >
-                  <Copy className="mr-2 h-4 w-4" />
+                  <Link className="mr-2 h-4 w-4" />
                   Copy URL
                 </Button>
               </div>
             </div>
           )}
-        </SheetContent>
-      </Sheet>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 } 

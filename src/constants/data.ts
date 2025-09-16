@@ -166,6 +166,22 @@ export const navItems: NavItem[] = [
     shortcut: ['n', 'o'],
     isActive: false,
     items: [] // No child items
+  },
+  {
+    title: 'Shipping',
+    url: '/dashboard/shipping',
+    icon: 'truck',
+    shortcut: ['s', 'h'],
+    isActive: false,
+    items: [] // No child items
+  },
+  {
+    title: 'Taxes',
+    url: '/dashboard/taxes',
+    icon: 'percent',
+    shortcut: ['t', 'x'],
+    isActive: false,
+    items: [] // No child items
   }
 ];
 

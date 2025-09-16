@@ -187,10 +187,13 @@ export const useFirebaseOperations = () => {
 
   const remove = useCallback(async (path: string) => {
     try {
+      console.log('Firebase remove operation starting for path:', path);
       setLoading(true);
       setError(null);
       await deleteData(path);
+      console.log('Firebase remove operation completed successfully for path:', path);
     } catch (err) {
+      console.error('Firebase remove operation failed for path:', path, err);
       const error = err instanceof Error ? err : new Error('Failed to delete data');
       setError(error);
       throw error;

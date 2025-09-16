@@ -10,7 +10,6 @@ import {
   TableRow
 } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -31,8 +30,7 @@ import {
   Search,
   Bell,
   BellOff,
-  Calendar,
-  Clock
+  Calendar
 } from 'lucide-react';
 import { format } from 'date-fns';
 
@@ -119,10 +117,6 @@ export function NotificationsTable({ notifications, loading, onEdit }: Notificat
 
   
 
-  const isExpired = (expiresAt?: string) => {
-    if (!expiresAt) return false;
-    return new Date(expiresAt) < new Date();
-  };
 
   if (loading) {
     return (
@@ -164,14 +158,13 @@ export function NotificationsTable({ notifications, loading, onEdit }: Notificat
               <TableHead>Title</TableHead>
               <TableHead>Message</TableHead>
               <TableHead>Created</TableHead>
-              <TableHead>Expires</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {filteredNotifications.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="h-24 text-center">
+                <TableCell colSpan={5} className="h-24 text-center">
                   <div className="flex flex-col items-center justify-center space-y-2">
                     <Bell className="h-8 w-8 text-muted-foreground" />
                     <p className="text-muted-foreground">No notifications found</p>
@@ -191,17 +184,11 @@ export function NotificationsTable({ notifications, loading, onEdit }: Notificat
                       <Switch
                         checked={notification.isActive}
                         onCheckedChange={() => handleToggleActive(notification)}
-                        disabled={isExpired(notification.expiresAt)}
                       />
                       {notification.isActive ? (
                         <Bell className="h-4 w-4 text-green-600" />
                       ) : (
                         <BellOff className="h-4 w-4 text-gray-400" />
-                      )}
-                      {isExpired(notification.expiresAt) && (
-                        <Badge variant="outline" className="text-red-600 border-red-200">
-                          Expired
-                        </Badge>
                       )}
                     </div>
                   </TableCell>
@@ -224,18 +211,6 @@ export function NotificationsTable({ notifications, loading, onEdit }: Notificat
                       </span>
                     </div>
                   </TableCell>
-                  <TableCell>
-                    {notification.expiresAt ? (
-                      <div className="flex items-center space-x-1 text-sm text-muted-foreground">
-                        <Clock className="h-3 w-3" />
-                        <span>
-                          {format(new Date(notification.expiresAt), 'MMM dd, yyyy')}
-                        </span>
-                      </div>
-                    ) : (
-                      <span className="text-sm text-muted-foreground">Never</span>
-                    )}
-                  </TableCell>
                   <TableCell className="text-right">
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
@@ -252,7 +227,6 @@ export function NotificationsTable({ notifications, loading, onEdit }: Notificat
                         </DropdownMenuItem>
                         <DropdownMenuItem 
                           onClick={() => handleToggleActive(notification)}
-                          disabled={isExpired(notification.expiresAt)}
                         >
                           {notification.isActive ? (
                             <>

@@ -25,25 +25,75 @@ import {
   Search
 } from 'lucide-react';
 import { useFirebaseData } from '@/hooks/use-firebase-database';
+import { useOrders } from '@/hooks/use-orders';
 import { type Payment, type PaymentAnalytics } from '../utils/form-schema';
 
 export function PaymentsAnalytics() {
   const [selectedPeriod, setSelectedPeriod] = useState<string>('30d');
-  const [selectedCurrency, setSelectedCurrency] = useState<string>('USD');
+  const [selectedCurrency, setSelectedCurrency] = useState<string>('INR');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string>('all');
 
-  const { data: payments } = useFirebaseData('payments');
+  const { orders, loading: ordersLoading } = useOrders();
+  const { data: customers } = useFirebaseData('customers');
 
   const allPayments = useMemo(() => {
-    if (!payments) return [];
+    if (!orders || orders.length === 0) return [];
     
-    return Object.entries(payments).map(([paymentId, payment]) => ({
-      ...(payment as Payment),
-      id: paymentId
-    }));
-  }, [payments]);
+    return orders
+      .filter(order => 
+        order.paymentStatus && 
+        order.razorpayPaymentId && 
+        order.orderStatus !== 'cancelled' && 
+        order.orderStatus !== 'refunded'
+      ) // Only orders with Razorpay payments, excluding cancelled and refunded orders
+      .map(order => {
+        // Find customer name
+        let customerName = 'Unknown Customer';
+        let customerEmail = 'unknown@example.com';
+        
+        if (customers && order.userId) {
+          const customer = customers[order.userId];
+          if (customer) {
+            customerName = customer.name || customer.email || customer.userName || 'Unknown Customer';
+            customerEmail = customer.email || customer.userEmail || 'unknown@example.com';
+          }
+        } else if (order.userEmail) {
+          customerName = order.userEmail;
+          customerEmail = order.userEmail;
+        }
+
+        return {
+          id: order.id,
+          transactionId: order.razorpayPaymentId || order.id,
+          orderId: order.orderId || order.id,
+          customerId: order.userId || 'unknown',
+          customerName,
+          customerEmail,
+          amount: order.total || 0,
+          currency: 'INR', // Razorpay default currency
+          paymentMethod: 'razorpay' as const,
+          status: order.paymentStatus === 'completed' ? 'completed' : 
+                  order.paymentStatus === 'pending' ? 'pending' :
+                  order.paymentStatus === 'failed' ? 'failed' : 'pending',
+          gateway: 'razorpay',
+          gatewayTransactionId: order.razorpayPaymentId,
+          fees: 0, // Razorpay fees can be calculated separately
+          tax: 0, // Tax from order
+          description: `Payment for Order #${order.orderId || order.id}`,
+          metadata: {
+            razorpayOrderId: order.razorpayOrderId,
+            razorpayPaymentId: order.razorpayPaymentId,
+            orderStatus: order.orderStatus,
+            items: order.items?.length || 0
+          },
+          createdAt: order.createdAt || new Date().toISOString(),
+          updatedAt: order.updatedAt || order.createdAt || new Date().toISOString(),
+          completedAt: order.paymentStatus === 'completed' ? order.createdAt : undefined
+        } as Payment;
+      });
+  }, [orders, customers]);
 
   const filteredPayments = useMemo(() => {
     let filtered = allPayments;
@@ -279,6 +329,58 @@ export function PaymentsAnalytics() {
     }).format(amount);
   };
 
+  if (ordersLoading) {
+    return (
+      <div className="space-y-6">
+        <div className="flex flex-col space-y-4 md:flex-row md:items-center md:justify-between md:space-y-0">
+          <div>
+            <h2 className="text-2xl font-bold tracking-tight">Razorpay Payment Analytics</h2>
+            <p className="text-muted-foreground">
+              Loading payment data...
+            </p>
+          </div>
+        </div>
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Card key={i}>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Loading...</CardTitle>
+                <div className="h-4 w-4 bg-muted animate-pulse rounded" />
+              </CardHeader>
+              <CardContent>
+                <div className="h-8 w-20 bg-muted animate-pulse rounded" />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (allPayments.length === 0) {
+    return (
+      <div className="space-y-6">
+        <div className="flex flex-col space-y-4 md:flex-row md:items-center md:justify-between md:space-y-0">
+          <div>
+            <h2 className="text-2xl font-bold tracking-tight">Razorpay Payment Analytics</h2>
+            <p className="text-muted-foreground">
+              No Razorpay payments found. Payments will appear here once customers complete their orders.
+            </p>
+          </div>
+        </div>
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-12">
+            <CreditCard className="h-12 w-12 text-muted-foreground mb-4" />
+            <h3 className="text-lg font-semibold mb-2">No Payments Yet</h3>
+            <p className="text-muted-foreground text-center">
+              Razorpay payments will be displayed here once customers complete their orders.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Filters */}
@@ -315,10 +417,9 @@ export function PaymentsAnalytics() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All</SelectItem>
+              <SelectItem value="INR">INR</SelectItem>
               <SelectItem value="USD">USD</SelectItem>
               <SelectItem value="EUR">EUR</SelectItem>
-              <SelectItem value="GBP">GBP</SelectItem>
-              <SelectItem value="INR">INR</SelectItem>
             </SelectContent>
           </Select>
 
@@ -342,12 +443,10 @@ export function PaymentsAnalytics() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Methods</SelectItem>
+              <SelectItem value="razorpay">Razorpay</SelectItem>
               <SelectItem value="credit_card">Credit Card</SelectItem>
-              <SelectItem value="paypal">PayPal</SelectItem>
               <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
               <SelectItem value="cash_on_delivery">Cash on Delivery</SelectItem>
-              <SelectItem value="stripe">Stripe</SelectItem>
-              <SelectItem value="razorpay">Razorpay</SelectItem>
             </SelectContent>
           </Select>
 
@@ -444,20 +543,83 @@ export function PaymentsAnalytics() {
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="h-[300px] flex items-center justify-center">
-                  <div className="text-center text-muted-foreground">
-                    <BarChart3 className="h-12 w-12 mx-auto mb-2" />
-                    <p>Chart visualization would be here</p>
-                    <p className="text-sm">Using a charting library like Recharts</p>
-                  </div>
-                </div>
-                <div className="mt-4 space-y-2">
-                  {analytics.monthlyRevenue.slice(-6).map((item, index) => (
-                    <div key={index} className="flex justify-between items-center">
-                      <span className="text-sm">{item.month}</span>
-                      <span className="text-sm font-medium">{formatCurrency(item.revenue)}</span>
+                {/* Enhanced Monthly Revenue Display */}
+                <div className="space-y-4">
+                  {/* Current Month Highlight */}
+                  <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20 p-4 rounded-lg border">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h3 className="text-lg font-semibold text-blue-900 dark:text-blue-100">
+                          {analytics.monthlyRevenue[analytics.monthlyRevenue.length - 1]?.month || 'Current Month'}
+                        </h3>
+                        <p className="text-sm text-blue-700 dark:text-blue-300">
+                          Current month revenue
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-2xl font-bold text-blue-900 dark:text-blue-100">
+                          {formatCurrency(analytics.monthlyRevenue[analytics.monthlyRevenue.length - 1]?.revenue || 0)}
+                        </div>
+                        <div className="text-sm text-blue-700 dark:text-blue-300">
+                          {analytics.monthlyRevenue[analytics.monthlyRevenue.length - 1]?.transactions || 0} transactions
+                        </div>
+                      </div>
                     </div>
-                  ))}
+                  </div>
+
+                  {/* Monthly Revenue List with Visual Bars */}
+                  <div className="space-y-3">
+                    <h4 className="text-sm font-medium text-muted-foreground">Last 12 Months</h4>
+                    {analytics.monthlyRevenue.slice(-12).reverse().map((item, index) => {
+                      const maxRevenue = Math.max(...analytics.monthlyRevenue.map(m => m.revenue));
+                      const percentage = maxRevenue > 0 ? (item.revenue / maxRevenue) * 100 : 0;
+                      const isCurrentMonth = index === 0;
+                      
+                      return (
+                        <div key={index} className="space-y-2">
+                          <div className="flex justify-between items-center">
+                            <span className={`text-sm font-medium ${isCurrentMonth ? 'text-primary' : 'text-muted-foreground'}`}>
+                              {item.month}
+                            </span>
+                            <div className="text-right">
+                              <span className={`text-sm font-semibold ${isCurrentMonth ? 'text-primary' : ''}`}>
+                                {formatCurrency(item.revenue)}
+                              </span>
+                              <span className="text-xs text-muted-foreground ml-2">
+                                ({item.transactions} txns)
+                              </span>
+                            </div>
+                          </div>
+                          <div className="w-full bg-muted rounded-full h-2">
+                            <div 
+                              className={`h-2 rounded-full transition-all duration-300 ${
+                                isCurrentMonth 
+                                  ? 'bg-gradient-to-r from-blue-500 to-indigo-500' 
+                                  : 'bg-gradient-to-r from-gray-300 to-gray-400 dark:from-gray-600 dark:to-gray-500'
+                              }`}
+                              style={{ width: `${percentage}%` }}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Revenue Growth Summary */}
+                  <div className="grid grid-cols-2 gap-4 pt-4 border-t">
+                    <div className="text-center">
+                      <div className="text-2xl font-bold text-green-600">
+                        {formatCurrency(analytics.monthlyRevenue.slice(-3).reduce((sum, m) => sum + m.revenue, 0))}
+                      </div>
+                      <div className="text-xs text-muted-foreground">Last 3 months</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-2xl font-bold text-blue-600">
+                        {formatCurrency(analytics.monthlyRevenue.reduce((sum, m) => sum + m.revenue, 0))}
+                      </div>
+                      <div className="text-xs text-muted-foreground">Total (12 months)</div>
+                    </div>
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -506,33 +668,167 @@ export function PaymentsAnalytics() {
               </CardDescription>
             </CardHeader>
             <CardContent>
+              {/* Enhanced Revenue Growth Cards */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                <div className="text-center p-4 border rounded-lg">
-                  <div className="text-2xl font-bold text-green-600">
+                <div className="text-center p-6 border rounded-lg bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-950/20 dark:to-emerald-950/20">
+                  <div className="text-3xl font-bold text-green-600 mb-2">
                     {formatCurrency(analytics.revenueGrowth.currentMonth)}
                   </div>
-                  <div className="text-sm text-muted-foreground">Current Month</div>
+                  <div className="text-sm text-muted-foreground mb-1">Current Month</div>
+                  <div className="text-xs text-green-600 font-medium">
+                    {analytics.monthlyRevenue[analytics.monthlyRevenue.length - 1]?.transactions || 0} transactions
+                  </div>
                 </div>
-                <div className="text-center p-4 border rounded-lg">
-                  <div className="text-2xl font-bold text-blue-600">
+                <div className="text-center p-6 border rounded-lg bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20">
+                  <div className="text-3xl font-bold text-blue-600 mb-2">
                     {formatCurrency(analytics.revenueGrowth.previousMonth)}
                   </div>
-                  <div className="text-sm text-muted-foreground">Previous Month</div>
+                  <div className="text-sm text-muted-foreground mb-1">Previous Month</div>
+                  <div className="text-xs text-blue-600 font-medium">
+                    {analytics.monthlyRevenue[analytics.monthlyRevenue.length - 2]?.transactions || 0} transactions
+                  </div>
                 </div>
-                <div className="text-center p-4 border rounded-lg">
-                  <div className={`text-2xl font-bold ${analytics.revenueGrowth.growthPercentage >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                <div className={`text-center p-6 border rounded-lg ${
+                  analytics.revenueGrowth.growthPercentage >= 0 
+                    ? 'bg-gradient-to-br from-emerald-50 to-green-50 dark:from-emerald-950/20 dark:to-green-950/20' 
+                    : 'bg-gradient-to-br from-red-50 to-rose-50 dark:from-red-950/20 dark:to-rose-950/20'
+                }`}>
+                  <div className={`text-3xl font-bold mb-2 ${
+                    analytics.revenueGrowth.growthPercentage >= 0 ? 'text-green-600' : 'text-red-600'
+                  }`}>
                     {analytics.revenueGrowth.growthPercentage >= 0 ? '+' : ''}{analytics.revenueGrowth.growthPercentage.toFixed(1)}%
                   </div>
-                  <div className="text-sm text-muted-foreground">Growth</div>
+                  <div className="text-sm text-muted-foreground mb-1">Month-over-Month</div>
+                  <div className={`text-xs font-medium ${
+                    analytics.revenueGrowth.growthPercentage >= 0 ? 'text-green-600' : 'text-red-600'
+                  }`}>
+                    {analytics.revenueGrowth.growthPercentage >= 0 ? 'Growth' : 'Decline'}
+                  </div>
                 </div>
               </div>
-              
-              <div className="h-[400px] flex items-center justify-center">
-                <div className="text-center text-muted-foreground">
-                  <TrendingUp className="h-12 w-12 mx-auto mb-2" />
-                  <p>Revenue trend chart would be here</p>
-                  <p className="text-sm">Using a charting library like Recharts</p>
+
+              {/* Monthly Revenue Breakdown Table */}
+              <div className="space-y-4">
+                <h3 className="text-lg font-semibold">Monthly Revenue Breakdown</h3>
+                <div className="rounded-lg border overflow-hidden">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Month</TableHead>
+                        <TableHead>Revenue</TableHead>
+                        <TableHead>Transactions</TableHead>
+                        <TableHead>Avg. Transaction</TableHead>
+                        <TableHead>Growth</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {analytics.monthlyRevenue.slice(-12).reverse().map((item, index) => {
+                        const previousMonth = analytics.monthlyRevenue[analytics.monthlyRevenue.length - 2 - index];
+                        const growth = previousMonth && previousMonth.revenue > 0 
+                          ? ((item.revenue - previousMonth.revenue) / previousMonth.revenue) * 100 
+                          : 0;
+                        const avgTransaction = item.transactions > 0 ? item.revenue / item.transactions : 0;
+                        const isCurrentMonth = index === 0;
+                        
+                        return (
+                          <TableRow key={index} className={isCurrentMonth ? 'bg-muted/50' : ''}>
+                            <TableCell className="font-medium">
+                              <div className="flex items-center gap-2">
+                                {item.month}
+                                {isCurrentMonth && (
+                                  <Badge variant="default" className="text-xs">Current</Badge>
+                                )}
+                              </div>
+                            </TableCell>
+                            <TableCell className="font-semibold">
+                              {formatCurrency(item.revenue)}
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-2">
+                                <Activity className="h-4 w-4 text-muted-foreground" />
+                                {item.transactions}
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              {formatCurrency(avgTransaction)}
+                            </TableCell>
+                            <TableCell>
+                              <div className={`flex items-center gap-1 ${
+                                growth >= 0 ? 'text-green-600' : 'text-red-600'
+                              }`}>
+                                {growth >= 0 ? (
+                                  <ArrowUpRight className="h-4 w-4" />
+                                ) : (
+                                  <ArrowDownRight className="h-4 w-4" />
+                                )}
+                                <span className="text-sm font-medium">
+                                  {growth >= 0 ? '+' : ''}{growth.toFixed(1)}%
+                                </span>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
                 </div>
+              </div>
+
+              {/* Revenue Insights */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base">Best Performing Month</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {(() => {
+                      const bestMonth = analytics.monthlyRevenue.reduce((max, month) => 
+                        month.revenue > max.revenue ? month : max
+                      );
+                      return (
+                        <div className="space-y-2">
+                          <div className="text-2xl font-bold text-green-600">
+                            {bestMonth.month}
+                          </div>
+                          <div className="text-lg font-semibold">
+                            {formatCurrency(bestMonth.revenue)}
+                          </div>
+                          <div className="text-sm text-muted-foreground">
+                            {bestMonth.transactions} transactions
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base">Revenue Trends</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-3">
+                      <div className="flex justify-between">
+                        <span className="text-sm text-muted-foreground">Last 3 months:</span>
+                        <span className="font-semibold">
+                          {formatCurrency(analytics.monthlyRevenue.slice(-3).reduce((sum, m) => sum + m.revenue, 0))}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-sm text-muted-foreground">Last 6 months:</span>
+                        <span className="font-semibold">
+                          {formatCurrency(analytics.monthlyRevenue.slice(-6).reduce((sum, m) => sum + m.revenue, 0))}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-sm text-muted-foreground">Total (12 months):</span>
+                        <span className="font-semibold">
+                          {formatCurrency(analytics.monthlyRevenue.reduce((sum, m) => sum + m.revenue, 0))}
+                        </span>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
               </div>
             </CardContent>
           </Card>

@@ -9,10 +9,50 @@ import {
   CardDescription
 } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useDashboardAnalytics } from '@/hooks/use-dashboard-analytics';
+import { useFirebaseData } from '@/hooks/use-firebase-database';
+import { useOrders } from '@/hooks/use-orders';
+import { useMemo } from 'react';
 
 export function RecentSales() {
-  const { data: analytics, loading } = useDashboardAnalytics();
+  const { orders, loading: ordersLoading } = useOrders();
+  const { data: customers, loading: customersLoading } = useFirebaseData('customers');
+
+  const recentOrders = useMemo(() => {
+    if (!orders || orders.length === 0) {
+      return [];
+    }
+
+    return orders
+      .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())
+      .slice(0, 5)
+      .map(order => {
+        // Find customer name
+        let customerName = 'Unknown Customer';
+        if (customers && order.userId) {
+          const customer = customers[order.userId];
+          if (customer) {
+            customerName = customer.name || customer.email || customer.userName || 'Unknown Customer';
+          }
+        } else if (order.userEmail) {
+          customerName = order.userEmail;
+        }
+
+        return {
+          id: order.id,
+          customer: customerName,
+          amount: order.totalAmount || order.total || 0,
+          status: order.orderStatus || order.status || 'pending',
+          date: order.createdAt || new Date().toISOString()
+        };
+      });
+  }, [orders, customers]);
+
+  const totalOrders = useMemo(() => {
+    if (!orders) return 0;
+    return orders.length;
+  }, [orders]);
+
+  const loading = ordersLoading || customersLoading;
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-IN', {
@@ -37,7 +77,7 @@ export function RecentSales() {
           <Skeleton className="h-4 w-48" />
         ) : (
           <CardDescription>
-            You made {analytics?.totalOrders || 0} sales this month.
+            You made {totalOrders} sales this month.
           </CardDescription>
         )}
       </CardHeader>
@@ -55,8 +95,8 @@ export function RecentSales() {
                 <Skeleton className="h-4 w-20" />
               </div>
             ))
-          ) : analytics?.recentOrders?.length ? (
-            analytics.recentOrders.map((order) => (
+          ) : recentOrders.length ? (
+            recentOrders.map((order) => (
               <div key={order.id} className='flex items-center'>
                 <Avatar className='h-9 w-9'>
                   <AvatarFallback>{getInitials(order.customer)}</AvatarFallback>

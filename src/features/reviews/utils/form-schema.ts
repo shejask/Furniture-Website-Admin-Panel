@@ -37,6 +37,7 @@ export interface Review {
   featured: boolean;
   createdAt: string;
   updatedAt: string;
+  images?: string[];
 }
 
 export interface ReviewSummary {

@@ -73,9 +73,13 @@ export const updateData = async (path: string, updates: any): Promise<void> => {
 // Delete a record
 export const deleteData = async (path: string): Promise<void> => {
   try {
+    console.log('deleteData called with path:', path);
     const dbRef = ref(database, path);
+    console.log('Database reference created:', dbRef.toString());
     await remove(dbRef);
+    console.log('Data successfully deleted from path:', path);
   } catch (error) {
+    console.error('Error in deleteData for path:', path, error);
     // Log error for debugging but don't expose to client
     throw error;
   }

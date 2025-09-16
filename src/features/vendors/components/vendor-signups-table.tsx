@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useFirebaseData, useFirebaseOperations } from '@/hooks/use-firebase-database';
-import { Check, X, Search } from 'lucide-react';
+import { Check, X, Search, Trash2 } from 'lucide-react';
 
 type VendorSignup = {
   id?: string;
@@ -25,7 +25,7 @@ type VendorSignup = {
 
 export function VendorSignupsTable() {
   const { data: raw, loading } = useFirebaseData('vendors_signups');
-  const { update } = useFirebaseOperations();
+  const { update, remove } = useFirebaseOperations();
   const [search, setSearch] = useState('');
 
   const rows = useMemo(() => {
@@ -53,6 +53,18 @@ export function VendorSignupsTable() {
   const handleDecline = async (id: string | undefined) => {
     if (!id) return;
     await update(`vendors_signups/${id}`, { status: 'declined' });
+  };
+
+  const handleDelete = async (id: string | undefined) => {
+    if (!id) return;
+    if (confirm('Are you sure you want to delete this vendor signup? This action cannot be undone.')) {
+      try {
+        await remove(`vendors_signups/${id}`);
+      } catch (error) {
+        console.error('Error deleting vendor signup:', error);
+        alert('Failed to delete vendor signup');
+      }
+    }
   };
 
   const badgeFor = (status?: VendorSignup['status']) => {
@@ -147,6 +159,14 @@ export function VendorSignupsTable() {
                               disabled={s.status === 'declined'}
                             >
                               <X className="h-4 w-4 mr-1" /> Decline
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleDelete(s.id)}
+                              className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                            >
+                              <Trash2 className="h-4 w-4 mr-1" /> Delete
                             </Button>
                           </div>
                         </TableCell>

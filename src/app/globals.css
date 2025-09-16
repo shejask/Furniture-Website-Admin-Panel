@@ -28,6 +28,12 @@
 
 @import './theme.css';
 
+/* Fix scrolling issue for shipping pages */
+[data-slot='sidebar-inset'] {
+  overflow-y: auto !important;
+  height: 100vh !important;
+}
+
 :root {
   --radius: 0.625rem;
   --background: oklch(1 0 0);

@@ -39,6 +39,12 @@ export class EmailService {
               zip: order.address.zip || order.address.postalCode || '',
               phone: order.address.phone || '',
             },
+            // Shiprocket tracking details
+            awbCode: order.awbCode,
+            courierName: order.courierName,
+            shiprocketOrderId: order.shiprocketOrderId,
+            shiprocketShipmentId: order.shiprocketShipmentId,
+            // Invoice attachment
             invoiceBuffer: invoiceHtml ? invoiceHtml.toString('base64') : null
           }
         }),
@@ -68,11 +74,13 @@ export class EmailService {
         },
         body: JSON.stringify({
           type: 'order-cancellation',
+          to: order.userEmail, // Add the 'to' parameter
           data: {
             customerName: order.address.firstName && order.address.lastName 
               ? `${order.address.firstName} ${order.address.lastName}` 
               : order.address.addressName || 'Customer',
             customerEmail: order.userEmail,
+            userEmail: order.userEmail, // Add userEmail for API compatibility
             orderId: order.orderId,
             orderDate: order.createdAt,
             totalAmount: order.total,
@@ -145,6 +153,124 @@ export class EmailService {
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(`API Error: ${errorData.error || 'Failed to send shipping email'}`);
+      }
+
+      const result = await response.json();
+      return result.success;
+    } catch (error) {
+      console.error('Email service error:', error);
+      return false;
+    }
+  }
+
+  // Send order notification to vendor
+  static async sendVendorOrderNotification(order: Order): Promise<boolean> {
+    try {
+      const response = await fetch('/api/email', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          type: 'vendor-order-notification',
+          data: {
+            vendorName: order.vendorName,
+            vendorEmail: order.vendorEmail,
+            orderId: order.orderId,
+            orderDate: order.createdAt,
+            totalAmount: order.total,
+            customerName: order.address.firstName && order.address.lastName 
+              ? `${order.address.firstName} ${order.address.lastName}` 
+              : order.address.addressName || 'Customer',
+            customerEmail: order.userEmail,
+            items: order.items.map(item => ({
+              productName: item.name,
+              price: item.salePrice || item.price,
+              quantity: item.quantity,
+              total: (item.salePrice || item.price) * item.quantity,
+              vendorName: item.vendorName,
+              vendorEmail: item.vendorEmail,
+            })),
+            subtotal: order.subtotal,
+            shipping: order.shipping,
+            discount: order.discount,
+            shippingAddress: {
+              name: order.address.firstName && order.address.lastName 
+                ? `${order.address.firstName} ${order.address.lastName}` 
+                : order.address.addressName || 'Customer',
+              address: order.address.streetAddress || order.address.street || '',
+              city: order.address.city,
+              state: order.address.state,
+              country: order.address.country,
+              zip: order.address.zip || order.address.postalCode || '',
+              phone: order.address.phone || '',
+            },
+          }
+        }),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(`API Error: ${errorData.error || 'Failed to send vendor notification'}`);
+      }
+
+      const result = await response.json();
+      return result.success;
+    } catch (error) {
+      console.error('Email service error:', error);
+      return false;
+    }
+  }
+
+  // Send refund confirmation email
+  static async sendRefundConfirmationEmail(order: Order, refundReason: string): Promise<boolean> {
+    try {
+      const response = await fetch('/api/email', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          type: 'refund-confirmation',
+          to: order.userEmail, // Add the 'to' parameter
+          data: {
+            customerName: order.address.firstName && order.address.lastName 
+              ? `${order.address.firstName} ${order.address.lastName}` 
+              : order.address.addressName || 'Customer',
+            customerEmail: order.userEmail,
+            userEmail: order.userEmail, // Add userEmail for API compatibility
+            orderId: order.orderId,
+            orderDate: order.createdAt,
+            refundDate: order.refundedAt || new Date().toISOString(),
+            totalAmount: order.total,
+            refundReason: refundReason,
+            items: order.items.map(item => ({
+              productName: item.name,
+              price: item.salePrice || item.price,
+              quantity: item.quantity,
+              total: (item.salePrice || item.price) * item.quantity,
+            })),
+            subtotal: order.subtotal,
+            shipping: order.shipping,
+            discount: order.discount,
+            shippingAddress: {
+              name: order.address.firstName && order.address.lastName 
+                ? `${order.address.firstName} ${order.address.lastName}` 
+                : order.address.addressName || 'Customer',
+              address: order.address.streetAddress || order.address.street || '',
+              city: order.address.city,
+              state: order.address.state,
+              country: order.address.country,
+              zip: order.address.zip || order.address.postalCode || '',
+              phone: order.address.phone || '',
+            },
+          }
+        }),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(`API Error: ${errorData.error || 'Failed to send refund confirmation'}`);
       }
 
       const result = await response.json();

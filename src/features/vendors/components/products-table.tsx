@@ -16,9 +16,6 @@ import {
   MoreHorizontal, 
   Eye, 
   Trash2, 
-  Copy, 
-  Download, 
-  Share2,
   Package,
   Store,
   DollarSign,
@@ -27,8 +24,7 @@ import {
   Star,
   TrendingUp,
   ShoppingCart,
-  Image as ImageIcon,
-  Files
+  Image as ImageIcon
 } from 'lucide-react';
 import Image from 'next/image';
 import { useFirebaseData, useFirebaseOperations } from '@/hooks/use-firebase-database';
@@ -40,6 +36,7 @@ interface Product {
   price: number;
   commissionAmount?: number;
   category: string;
+  categoryId?: string;
   photo_url?: string;
   vendorId: string;
   vendorName?: string;
@@ -74,13 +71,38 @@ export function ProductsTable() {
 
   const { data: products, loading: productsLoading } = useFirebaseData('products');
   const { data: vendors } = useFirebaseData('vendors');
-  const { remove, createWithKey } = useFirebaseOperations();
+  const { data: categories } = useFirebaseData('categories');
+  const { remove } = useFirebaseOperations();
+
+  const getCategoryName = useCallback((categoryId: string) => {
+    if (!categories || !categoryId) return 'Uncategorized';
+    const category = (categories as any)[categoryId];
+    return category?.name || categoryId;
+  }, [categories]);
 
   const allProducts = useMemo(() => {
     if (!products) return [];
     return Object.entries(products).map(([productId, raw]) => {
       const p = raw as any;
-      const categoryName = p.category || p.categoryName || (Array.isArray(p.categories) ? (p.categories[0]?.name || p.categories[0]?.id) : undefined) || '';
+      // Extract category from various possible fields
+      let categoryName = 'Uncategorized';
+      let categoryId = '';
+      
+      if (p.category && typeof p.category === 'string') {
+        categoryId = p.category.trim();
+        categoryName = getCategoryName(categoryId);
+      } else if (p.categoryName && typeof p.categoryName === 'string') {
+        categoryName = p.categoryName.trim();
+      } else if (Array.isArray(p.categories) && p.categories.length > 0) {
+        const firstCategory = p.categories[0];
+        if (typeof firstCategory === 'string') {
+          categoryId = firstCategory.trim();
+          categoryName = getCategoryName(categoryId);
+        } else if (firstCategory && typeof firstCategory === 'object') {
+          categoryId = firstCategory.id || '';
+          categoryName = firstCategory.name || getCategoryName(categoryId) || 'Uncategorized';
+        }
+      }
       const statusMapped = p.status === 'enabled' ? 'active' : p.status === 'disabled' ? 'inactive' : (p.status || 'active');
       return {
         id: productId,
@@ -89,8 +111,9 @@ export function ProductsTable() {
         price: Number(p.price) || 0,
         commissionAmount: Number(p.commissionAmount) || 0,
         category: categoryName,
+        categoryId: categoryId,
         photo_url: p.photo_url || p.thumbnail || '',
-        vendorId: p.vendorId || p.vendor || '',
+        vendorId: p.vendorId || p.vendor || 'unknown',
         vendorName: p.vendorName,
         vendorStore: p.vendorStore,
         stock: p.stockQuantity ?? p.stock ?? undefined,
@@ -102,7 +125,7 @@ export function ProductsTable() {
         updated_at: p.updated_at || p.updatedAt || ''
       } as Product;
     });
-  }, [products]);
+  }, [products, getCategoryName]);
 
   const filteredProducts = useMemo(() => {
     let filtered = allProducts;
@@ -121,12 +144,15 @@ export function ProductsTable() {
 
     // Filter by vendor
     if (selectedVendor !== 'all') {
-      filtered = filtered.filter(product => product.vendorId === selectedVendor);
+      filtered = filtered.filter(product => product.vendorId === selectedVendor && product.vendorId !== 'unknown');
     }
 
     // Filter by category
     if (selectedCategory !== 'all') {
-      filtered = filtered.filter(product => product.category === selectedCategory);
+      filtered = filtered.filter(product => 
+        product.categoryId === selectedCategory || 
+        product.category.trim().toLowerCase() === selectedCategory.trim().toLowerCase()
+      );
     }
 
     // Filter by status
@@ -223,17 +249,50 @@ export function ProductsTable() {
   }, [filteredProducts, getVendorName]);
 
   const getUniqueCategories = () => {
-    const categories = new Set(allProducts.map(product => product.category));
-    return Array.from(categories).sort();
+    const categoryMap = new Map();
+    
+    // First, try to get categories from products
+    allProducts.forEach(product => {
+      // Include categories that have either categoryId or category name
+      if (product.categoryId) {
+        categoryMap.set(product.categoryId, {
+          id: product.categoryId,
+          name: product.category || getCategoryName(product.categoryId)
+        });
+      } else if (product.category && product.category !== 'Uncategorized') {
+        // For products without categoryId but with category name, use category as both id and name
+        categoryMap.set(product.category, {
+          id: product.category,
+          name: product.category
+        });
+      }
+    });
+    
+    // If we don't have many categories from products, try to get them from the categories collection
+    if (categoryMap.size < 3 && categories) {
+      Object.entries(categories).forEach(([categoryId, categoryData]) => {
+        const category = categoryData as any;
+        if (category.name) {
+          categoryMap.set(categoryId, {
+            id: categoryId,
+            name: category.name
+          });
+        }
+      });
+    }
+    
+    return Array.from(categoryMap.values()).sort((a, b) => a.name.localeCompare(b.name));
   };
 
   const getUniqueVendors = () => {
     if (!vendors) return [];
-    return Object.entries(vendors).map(([id, vendor]) => ({
-      id,
-      name: (vendor as any).storeName || (vendor as any).name || 'Unknown Vendor',
-      store: (vendor as any).slug || ''
-    }));
+    return Object.entries(vendors)
+      .map(([id, vendor]) => ({
+        id,
+        name: (vendor as any).storeName || (vendor as any).name || 'Unknown Vendor',
+        store: (vendor as any).slug || ''
+      }))
+      .filter(vendor => vendor.id && vendor.id.trim() !== '' && vendor.id !== 'unknown');
   };
 
   const handleViewDetails = (product: Product) => {
@@ -259,34 +318,6 @@ export function ProductsTable() {
     }
   };
 
-  const handleDuplicateProduct = async (product: Product) => {
-    // Get the raw product data
-    const rawProduct = (products as any)?.[product.id];
-    if (!rawProduct) return;
-
-    try {
-      // Create a duplicate with modified data
-      const duplicatedProduct = {
-        ...rawProduct,
-        name: `${rawProduct.name} (Copy)`,
-        slug: `${rawProduct.slug || rawProduct.name?.toLowerCase().replace(/\s+/g, '-')}-copy-${Date.now()}`,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      };
-
-      // Remove the original ID so Firebase generates a new one
-      delete duplicatedProduct.id;
-
-      // Create the duplicated product directly in the database
-      await createWithKey('products', duplicatedProduct);
-      
-      // Show success message
-      alert('Product duplicated successfully!');
-    } catch (error) {
-      console.error('Error duplicating product:', error);
-      alert('Failed to duplicate product. Please try again.');
-    }
-  };
 
   const getStatusBadge = (status?: string) => {
     switch (status) {
@@ -388,6 +419,11 @@ export function ProductsTable() {
           <CardTitle>Products</CardTitle>
           <CardDescription>
             Browse and manage all vendor products
+            {filteredProducts.length !== allProducts.length && (
+              <span className="ml-2 text-blue-600 font-medium">
+                (Showing {filteredProducts.length} of {allProducts.length} products)
+              </span>
+            )}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -426,8 +462,8 @@ export function ProductsTable() {
                 <SelectContent>
                   <SelectItem value="all">All Categories</SelectItem>
                   {getUniqueCategories().map(category => (
-                    <SelectItem key={category} value={category}>
-                      {category}
+                    <SelectItem key={category.id} value={category.id}>
+                      {category.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -464,6 +500,19 @@ export function ProductsTable() {
                 onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
               >
                 {sortOrder === 'asc' ? '↑' : '↓'}
+              </Button>
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setSearchQuery('');
+                  setSelectedVendor('all');
+                  setSelectedCategory('all');
+                  setSelectedStatus('all');
+                }}
+              >
+                Clear Filters
               </Button>
             </div>
           </div>
@@ -522,12 +571,6 @@ export function ProductsTable() {
                               <div className="text-sm text-muted-foreground line-clamp-1">
                                 {product.description}
                               </div>
-                              {product.featured && (
-                                <Badge variant="outline" className="mt-1 text-xs">
-                                  <Star className="h-3 w-3 mr-1" />
-                                  Featured
-                                </Badge>
-                              )}
                             </div>
                           </div>
                         </TableCell>
@@ -586,23 +629,6 @@ export function ProductsTable() {
                                 <DropdownMenuItem onClick={() => handleViewDetails(product)}>
                                   <Eye className="mr-2 h-4 w-4" />
                                   View Details
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => handleDuplicateProduct(product)}>
-                                  <Files className="mr-2 h-4 w-4" />
-                                  Duplicate Product
-                                </DropdownMenuItem>
-                                <DropdownMenuSeparator />
-                                <DropdownMenuItem>
-                                  <Copy className="mr-2 h-4 w-4" />
-                                  Copy ID
-                                </DropdownMenuItem>
-                                <DropdownMenuItem>
-                                  <Download className="mr-2 h-4 w-4" />
-                                  Export Data
-                                </DropdownMenuItem>
-                                <DropdownMenuItem>
-                                  <Share2 className="mr-2 h-4 w-4" />
-                                  Share
                                 </DropdownMenuItem>
                                 <DropdownMenuSeparator />
                                 <DropdownMenuItem

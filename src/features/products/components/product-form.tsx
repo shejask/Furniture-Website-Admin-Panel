@@ -10,7 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
-import { Loader2, Save, Upload, X } from 'lucide-react';
+import { Loader2, Save, Upload, X, Star } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useFirebaseOperations } from '@/hooks/use-firebase-database';
 import { useFirebaseStorage } from '@/hooks/use-firebase-storage';
@@ -47,6 +47,8 @@ interface ProductFormData {
   discount: number;
   salePrice: number;
   commissionAmount: number;
+  taxId: string;
+  rating: number;
   
   // Variable Product Options
   variableOptions: Array<{
@@ -114,6 +116,8 @@ const initialFormData: ProductFormData = {
   discount: 0,
   salePrice: 0,
   commissionAmount: 0,
+  taxId: 'no-tax',
+  rating: 0,
   variableOptions: [],
   tags: [] as string[],
   categories: [] as string[],
@@ -170,6 +174,8 @@ export function ProductForm({ initialData }: ProductFormProps) {
         discount: initialData.discount || 0,
         salePrice: initialData.salePrice || 0,
         commissionAmount: Number(initialData.commissionAmount) || 0,
+        taxId: initialData.taxId && initialData.taxId !== '' ? initialData.taxId : 'no-tax',
+        rating: initialData.rating || 0,
         variableOptions: initialData.variableOptions || [],
         tags: initialData.tags || [],
         categories: initialData.categories || [initialData.category || ''],
@@ -242,6 +248,7 @@ export function ProductForm({ initialData }: ProductFormProps) {
   const { data: categories } = useFirebaseData('categories');
   const { data: tags } = useFirebaseData('tags');
   const { data: brands } = useFirebaseData('brands');
+  const { data: taxes } = useFirebaseData('taxes');
 
   // Get subcategories for a selected category
   const getSubCategoriesForCategory = (categoryId: string): SubCategory[] => {
@@ -520,6 +527,8 @@ export function ProductForm({ initialData }: ProductFormProps) {
       // All variation fields (variableOptions, dimensions, roomType, warrantyTime) are automatically included
       const productData = {
         ...formData,
+        // Convert "no-tax" back to empty string for database storage
+        taxId: formData.taxId === 'no-tax' ? '' : formData.taxId,
         updatedAt: new Date().toISOString()
       };
 
@@ -841,6 +850,26 @@ export function ProductForm({ initialData }: ProductFormProps) {
                       required
                     />
                   </div>
+                </div>
+
+                <div className="space-y-3">
+                  <Label htmlFor="taxId">Tax</Label>
+                  <Select
+                    value={formData.taxId}
+                    onValueChange={(value) => setFormData(prev => ({ ...prev, taxId: value }))}
+                  >
+                    <SelectTrigger className="h-12">
+                      <SelectValue placeholder="Select a tax rate" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="no-tax">No Tax</SelectItem>
+                      {taxes && Object.entries(taxes).map(([id, tax]) => (
+                        <SelectItem key={id} value={id}>
+                          {(tax as any).name} ({(tax as any).rate}%)
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 <div className="space-y-3">

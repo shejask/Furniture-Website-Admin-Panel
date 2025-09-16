@@ -12,10 +12,9 @@ import {
 } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
-import { AreaGraph } from './area-graph';
 import { BarGraph } from './bar-graph';
-import { PieGraph } from './pie-graph';
 import { RecentSales } from './recent-sales';
+import { RecentOrdersTable } from './recent-orders-table';
 import { IconTrendingUp, IconTrendingDown } from '@tabler/icons-react';
 import { Badge } from '@/components/ui/badge';
 import { useDashboardAnalytics } from '@/hooks/use-dashboard-analytics';
@@ -182,12 +181,9 @@ export default function OverViewPage() {
               <Card className='col-span-4 md:col-span-3'>
                 <RecentSales />
               </Card>
-              <div className='col-span-4'>
-                <AreaGraph />
-              </div>
-              <div className='col-span-4 md:col-span-3'>
-                <PieGraph />
-              </div>
+            </div>
+            <div className='grid grid-cols-1 gap-4'>
+              <RecentOrdersTable />
             </div>
           </TabsContent>
         </Tabs>

@@ -17,6 +17,62 @@ export interface StockUpdateResult {
 }
 
 export class StockService {
+  // Check if an order can be fulfilled (sufficient stock for all items)
+  static async checkOrderStock(order: Order): Promise<{
+    canFulfill: boolean;
+    insufficientStock: Array<{
+      productId: string;
+      requested: number;
+      available: number;
+    }>;
+    errors: Array<{
+      productId: string;
+      error: string;
+    }>;
+  }> {
+    const result = {
+      canFulfill: true,
+      insufficientStock: [] as Array<{
+        productId: string;
+        requested: number;
+        available: number;
+      }>,
+      errors: [] as Array<{
+        productId: string;
+        error: string;
+      }>,
+    };
+
+    try {
+      // Check if all items have sufficient stock
+      const stockCheckResults = await Promise.all(
+        order.items.map(item => this.checkProductStock(item.id, item.quantity))
+      );
+
+      // Identify items with insufficient stock
+      stockCheckResults.forEach((stockCheck, index) => {
+        if (!stockCheck.sufficient) {
+          result.insufficientStock.push({
+            productId: order.items[index].id,
+            requested: order.items[index].quantity,
+            available: stockCheck.available,
+          });
+          result.canFulfill = false;
+        }
+      });
+
+      return result;
+    } catch (error) {
+      console.error('Error checking stock for order:', error);
+      result.canFulfill = false;
+      result.errors.push({
+        productId: 'GENERAL',
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+      return result;
+    }
+  }
+
   // Reduce stock for all items in an order
   static async reduceStockForOrder(order: Order): Promise<StockUpdateResult> {
     const result: StockUpdateResult = {

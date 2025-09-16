@@ -7,7 +7,6 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -20,46 +19,33 @@ import {
   Eye, 
   Edit, 
   Trash2, 
-  Copy, 
-  Download, 
-  Share2,
   Star,
   User,
   Package,
   CheckCircle,
   XCircle,
   Clock,
-  ThumbsUp,
-  ThumbsDown,
   Award,
   Shield,
   MessageSquare,
   Calendar
 } from 'lucide-react';
-import { useFirebaseData, useFirebaseOperations } from '@/hooks/use-firebase-database';
+import { useFirebaseOperations } from '@/hooks/use-firebase-database';
+import { useProductReviews } from '@/hooks/use-product-reviews';
 import { type Review, type ReviewSummary } from '../utils/form-schema';
 
 export function ReviewsTable() {
   const [editingReview, setEditingReview] = useState<Review | null>(null);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [selectedReview, setSelectedReview] = useState<Review | null>(null);
-  const [isDetailSheetOpen, setIsDetailSheetOpen] = useState(false);
+  const [isDetailDialogOpen, setIsDetailDialogOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
   const [selectedRating, setSelectedRating] = useState<string>('all');
   const [sortBy, setSortBy] = useState<string>('createdAt');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
-  const { data: reviews, loading } = useFirebaseData('reviews');
-
-  const allReviews = useMemo(() => {
-    if (!reviews) return [];
-    
-    return Object.entries(reviews).map(([reviewId, review]) => ({
-      ...(review as Review),
-      id: reviewId
-    }));
-  }, [reviews]);
+  const { reviews: allReviews, loading, refetch } = useProductReviews();
 
   const filteredReviews = useMemo(() => {
     let filtered = allReviews;
@@ -174,54 +160,65 @@ export function ReviewsTable() {
 
   const { update, remove, loading: operationLoading } = useFirebaseOperations();
 
-  const handleApprove = async (reviewId: string) => {
+  const handleApprove = async (review: Review) => {
     try {
-      await update(`reviews/${reviewId}`, {
+      await update(`products/${review.productId}/reviews/${review.id}`, {
         status: 'approved',
         updatedAt: new Date().toISOString(),
       });
+      await refetch();
     } catch (error) {
-      // Log error for debugging but don't expose to client
+      console.error('Error approving review:', error);
+      alert('Failed to approve review');
     }
   };
 
-  const handleReject = async (reviewId: string) => {
+  const handleReject = async (review: Review) => {
     try {
-      await update(`reviews/${reviewId}`, {
+      await update(`products/${review.productId}/reviews/${review.id}`, {
         status: 'rejected',
         updatedAt: new Date().toISOString(),
       });
+      await refetch();
     } catch (error) {
-      // Log error for debugging but don't expose to client
+      console.error('Error rejecting review:', error);
+      alert('Failed to reject review');
     }
   };
 
-  const handleDelete = async (reviewId: string) => {
+  const handleDelete = async (review: Review) => {
     if (confirm('Are you sure you want to delete this review?')) {
       try {
-        await remove(`reviews/${reviewId}`);
+        console.log('Deleting review:', review);
+        console.log('Delete path:', `products/${review.productId}/reviews/${review.id}`);
+        await remove(`products/${review.productId}/reviews/${review.id}`);
+        console.log('Review deleted successfully');
+        // Refresh the reviews data
+        await refetch();
       } catch (error) {
-        // Log error for debugging but don't expose to client
+        console.error('Error deleting review:', error);
+        alert(`Failed to delete review: ${error instanceof Error ? error.message : 'Unknown error'}`);
       }
     }
   };
 
   const handleEdit = async (data: any) => {
     try {
-      await update(`reviews/${editingReview!.id}`, {
+      await update(`products/${editingReview!.productId}/reviews/${editingReview!.id}`, {
         ...data,
         updatedAt: new Date().toISOString(),
       });
       setIsEditDialogOpen(false);
       setEditingReview(null);
     } catch (error) {
-      // Log error for debugging but don't expose to client
+      console.error('Error editing review:', error);
+      alert('Failed to edit review');
     }
   };
 
   const handleViewDetails = (review: Review) => {
     setSelectedReview(review);
-    setIsDetailSheetOpen(true);
+    setIsDetailDialogOpen(true);
   };
 
   const handleCancel = () => {
@@ -446,7 +443,12 @@ export function ReviewsTable() {
                               </div>
                             )}
                             <div>
-                              <div className="font-medium">{review.productName}</div>
+                              <div className="font-medium truncate max-w-[150px]" title={review.productName}>
+                                {review.productName.length > 20 
+                                  ? `${review.productName.substring(0, 20)}...` 
+                                  : review.productName
+                                }
+                              </div>
                               <div className="text-sm text-muted-foreground">
                                 {review.verified && <Shield className="inline h-3 w-3 mr-1" />}
                                 {review.featured && <Award className="inline h-3 w-3 mr-1" />}
@@ -467,16 +469,6 @@ export function ReviewsTable() {
                             <div className="font-medium">{review.title}</div>
                             <div className="text-sm text-muted-foreground line-clamp-2">
                               {review.description}
-                            </div>
-                            <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                              <div className="flex items-center gap-1">
-                                <ThumbsUp className="h-3 w-3" />
-                                {review.helpful}
-                              </div>
-                              <div className="flex items-center gap-1">
-                                <ThumbsDown className="h-3 w-3" />
-                                {review.notHelpful}
-                              </div>
                             </div>
                           </div>
                         </TableCell>
@@ -522,32 +514,19 @@ export function ReviewsTable() {
                                 </DropdownMenuItem>
                                 {review.status === 'pending' && (
                                   <>
-                                    <DropdownMenuItem onClick={() => handleApprove(review.id)}>
+                                    <DropdownMenuItem onClick={() => handleApprove(review)}>
                                       <CheckCircle className="mr-2 h-4 w-4" />
                                       Approve
                                     </DropdownMenuItem>
-                                    <DropdownMenuItem onClick={() => handleReject(review.id)}>
+                                    <DropdownMenuItem onClick={() => handleReject(review)}>
                                       <XCircle className="mr-2 h-4 w-4" />
                                       Reject
                                     </DropdownMenuItem>
                                   </>
                                 )}
                                 <DropdownMenuSeparator />
-                                <DropdownMenuItem>
-                                  <Copy className="mr-2 h-4 w-4" />
-                                  Copy Review ID
-                                </DropdownMenuItem>
-                                <DropdownMenuItem>
-                                  <Download className="mr-2 h-4 w-4" />
-                                  Export Data
-                                </DropdownMenuItem>
-                                <DropdownMenuItem>
-                                  <Share2 className="mr-2 h-4 w-4" />
-                                  Share Review
-                                </DropdownMenuItem>
-                                <DropdownMenuSeparator />
                                 <DropdownMenuItem
-                                  onClick={() => handleDelete(review.id)}
+                                  onClick={() => handleDelete(review)}
                                   className="text-red-600"
                                 >
                                   <Trash2 className="mr-2 h-4 w-4" />
@@ -671,15 +650,15 @@ export function ReviewsTable() {
         </DialogContent>
       </Dialog>
 
-      {/* Review Details Sheet */}
-      <Sheet open={isDetailSheetOpen} onOpenChange={setIsDetailSheetOpen}>
-        <SheetContent className="w-[600px] sm:w-[800px] overflow-y-auto">
-          <SheetHeader>
-            <SheetTitle>Review Details</SheetTitle>
-            <SheetDescription>
+      {/* Review Details Dialog */}
+      <Dialog open={isDetailDialogOpen} onOpenChange={setIsDetailDialogOpen}>
+        <DialogContent className="sm:max-w-[800px] max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Review Details</DialogTitle>
+            <DialogDescription>
               Complete information about the selected review
-            </SheetDescription>
-          </SheetHeader>
+            </DialogDescription>
+          </DialogHeader>
           {selectedReview && (
             <div className="space-y-6 mt-6">
               {/* Product Information */}
@@ -769,16 +748,25 @@ export function ReviewsTable() {
                     <Label className="text-sm font-medium">Description</Label>
                     <p className="text-sm text-muted-foreground mt-1">{selectedReview.description}</p>
                   </div>
-                  <div className="flex items-center gap-4">
-                    <div className="flex items-center gap-2">
-                      <ThumbsUp className="h-4 w-4 text-green-500" />
-                      <span className="text-sm">{selectedReview.helpful} helpful</span>
+                  
+                  {/* Review Images */}
+                  {selectedReview.images && selectedReview.images.length > 0 && (
+                    <div>
+                      <Label className="text-sm font-medium">Review Images</Label>
+                      <div className="grid grid-cols-2 gap-2 mt-2">
+                        {selectedReview.images.map((imageUrl, index) => (
+                          <Image
+                            key={index}
+                            src={imageUrl}
+                            alt={`Review image ${index + 1}`}
+                            width={200}
+                            height={150}
+                            className="w-full h-24 rounded-lg object-cover border"
+                          />
+                        ))}
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <ThumbsDown className="h-4 w-4 text-red-500" />
-                      <span className="text-sm">{selectedReview.notHelpful} not helpful</span>
-                    </div>
-                  </div>
+                  )}
                 </CardContent>
               </Card>
 
@@ -815,8 +803,8 @@ export function ReviewsTable() {
               </Card>
             </div>
           )}
-        </SheetContent>
-      </Sheet>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 } 

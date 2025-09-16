@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Button } from '@/components/ui/button';
@@ -35,6 +35,7 @@ export function TestimonialForm({
   isEditing = false 
 }: TestimonialFormProps) {
   const [imagePreview, setImagePreview] = useState<string | null>(initialData?.imageUrl || null);
+  const [hasNewImage, setHasNewImage] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { upload } = useFirebaseStorage();
@@ -55,7 +56,15 @@ export function TestimonialForm({
     }
   });
 
-  const isImageUploaded = !!watch('imageUrl');
+  const currentImageUrl = watch('imageUrl');
+  const isImageUploaded = !!currentImageUrl;
+
+  // Update image preview when initial data changes
+  useEffect(() => {
+    if (initialData?.imageUrl) {
+      setImagePreview(initialData.imageUrl);
+    }
+  }, [initialData?.imageUrl]);
 
   const handleImageUpload = async (file: File) => {
     if (!file) return;
@@ -69,6 +78,7 @@ export function TestimonialForm({
       
       setValue('imageUrl', imageUrl);
       setImagePreview(imageUrl);
+      setHasNewImage(true);
       setUploadProgress(0);
     } catch (error) {
       toast.error('Failed to upload image');
@@ -200,6 +210,11 @@ export function TestimonialForm({
                           height={600}
                           className="w-full h-auto rounded-lg border"
                         />
+                        {hasNewImage && (
+                          <div className="absolute top-2 left-2 bg-green-500 text-white text-xs px-2 py-1 rounded">
+                            New Image
+                          </div>
+                        )}
                         <Button
                           type="button"
                           variant="destructive"
@@ -208,6 +223,7 @@ export function TestimonialForm({
                           onClick={() => {
                             setImagePreview(null);
                             setValue('imageUrl', '');
+                            setHasNewImage(false);
                           }}
                         >
                           <X className="h-4 w-4" />
@@ -237,7 +253,7 @@ export function TestimonialForm({
             <Button type="button" variant="outline" onClick={onCancel}>
               Cancel
             </Button>
-            <Button type="submit" disabled={isLoading || !isImageUploaded}>
+            <Button type="submit" disabled={isLoading || (!isImageUploaded && !isEditing)}>
               {isLoading ? 'Saving...' : isEditing ? 'Update Testimonial' : 'Add Testimonial'}
             </Button>
           </div>

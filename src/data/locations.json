@@ -1,0 +1,195 @@
+{
+  "countries": [
+    {
+      "name": "India",
+      "code": "IN",
+      "states": [
+        {
+          "name": "Andhra Pradesh",
+          "code": "AP",
+          "cities": [
+            "Visakhapatnam", "Vijayawada", "Guntur", "Nellore", "Kurnool", "Tirupati", "Kadapa", "Anantapur", "Chittoor", "Rajahmundry"
+          ]
+        },
+        {
+          "name": "Karnataka",
+          "code": "KA",
+          "cities": [
+            "Bangalore", "Mysore", "Hubli", "Mangalore", "Belgaum", "Gulbarga", "Davanagere", "Bellary", "Bijapur", "Shimoga"
+          ]
+        },
+        {
+          "name": "Kerala",
+          "code": "KL",
+          "cities": [
+            "Thiruvananthapuram", "Kochi", "Kozhikode", "Thrissur", "Palakkad", "Malappuram", "Kannur", "Kasaragod", "Alappuzha", "Kollam"
+          ]
+        },
+        {
+          "name": "Maharashtra",
+          "code": "MH",
+          "cities": [
+            "Mumbai", "Pune", "Nagpur", "Thane", "Nashik", "Aurangabad", "Solapur", "Amravati", "Kolhapur", "Sangli"
+          ]
+        },
+        {
+          "name": "Tamil Nadu",
+          "code": "TN",
+          "cities": [
+            "Chennai", "Coimbatore", "Madurai", "Tiruchirappalli", "Salem", "Tirunelveli", "Tiruppur", "Erode", "Vellore", "Thoothukkudi"
+          ]
+        },
+        {
+          "name": "Gujarat",
+          "code": "GJ",
+          "cities": [
+            "Ahmedabad", "Surat", "Vadodara", "Rajkot", "Bhavnagar", "Jamnagar", "Junagadh", "Gandhinagar", "Nadiad", "Morbi"
+          ]
+        },
+        {
+          "name": "Rajasthan",
+          "code": "RJ",
+          "cities": [
+            "Jaipur", "Jodhpur", "Udaipur", "Kota", "Bikaner", "Ajmer", "Bharatpur", "Bhilwara", "Alwar", "Sikar"
+          ]
+        },
+        {
+          "name": "West Bengal",
+          "code": "WB",
+          "cities": [
+            "Kolkata", "Asansol", "Siliguri", "Durgapur", "Bardhaman", "Malda", "Baharampur", "Habra", "Kharagpur", "Shantipur"
+          ]
+        },
+        {
+          "name": "Uttar Pradesh",
+          "code": "UP",
+          "cities": [
+            "Lucknow", "Kanpur", "Agra", "Varanasi", "Meerut", "Allahabad", "Bareilly", "Ghaziabad", "Moradabad", "Aligarh"
+          ]
+        },
+        {
+          "name": "Madhya Pradesh",
+          "code": "MP",
+          "cities": [
+            "Bhopal", "Indore", "Gwalior", "Jabalpur", "Ujjain", "Sagar", "Dewas", "Satna", "Ratlam", "Rewa"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "United States",
+      "code": "US",
+      "states": [
+        {
+          "name": "California",
+          "code": "CA",
+          "cities": [
+            "Los Angeles", "San Diego", "San Jose", "San Francisco", "Fresno", "Sacramento", "Long Beach", "Oakland", "Bakersfield", "Anaheim"
+          ]
+        },
+        {
+          "name": "Texas",
+          "code": "TX",
+          "cities": [
+            "Houston", "San Antonio", "Dallas", "Austin", "Fort Worth", "El Paso", "Arlington", "Corpus Christi", "Plano", "Lubbock"
+          ]
+        },
+        {
+          "name": "Florida",
+          "code": "FL",
+          "cities": [
+            "Jacksonville", "Miami", "Tampa", "Orlando", "St. Petersburg", "Hialeah", "Tallahassee", "Fort Lauderdale", "Port St. Lucie", "Cape Coral"
+          ]
+        },
+        {
+          "name": "New York",
+          "code": "NY",
+          "cities": [
+            "New York City", "Buffalo", "Rochester", "Yonkers", "Syracuse", "Albany", "New Rochelle", "Mount Vernon", "Schenectady", "Utica"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "United Kingdom",
+      "code": "GB",
+      "states": [
+        {
+          "name": "England",
+          "code": "ENG",
+          "cities": [
+            "London", "Birmingham", "Manchester", "Liverpool", "Leeds", "Sheffield", "Bristol", "Leicester", "Coventry", "Bradford"
+          ]
+        },
+        {
+          "name": "Scotland",
+          "code": "SCT",
+          "cities": [
+            "Edinburgh", "Glasgow", "Aberdeen", "Dundee", "Stirling", "Perth", "Inverness", "Paisley", "East Kilbride", "Livingston"
+          ]
+        },
+        {
+          "name": "Wales",
+          "code": "WLS",
+          "cities": [
+            "Cardiff", "Swansea", "Newport", "Wrexham", "Barry", "Caerphilly", "Rhondda", "Port Talbot", "Pontypridd", "Aberdare"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Canada",
+      "code": "CA",
+      "states": [
+        {
+          "name": "Ontario",
+          "code": "ON",
+          "cities": [
+            "Toronto", "Ottawa", "Mississauga", "Hamilton", "Brampton", "London", "Markham", "Vaughan", "Kitchener", "Windsor"
+          ]
+        },
+        {
+          "name": "Quebec",
+          "code": "QC",
+          "cities": [
+            "Montreal", "Quebec City", "Laval", "Gatineau", "Longueuil", "Sherbrooke", "Saguenay", "Levis", "Trois-Rivieres", "Terrebonne"
+          ]
+        },
+        {
+          "name": "British Columbia",
+          "code": "BC",
+          "cities": [
+            "Vancouver", "Surrey", "Burnaby", "Richmond", "Abbotsford", "Coquitlam", "Saanich", "Delta", "Kelowna", "Langley"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Australia",
+      "code": "AU",
+      "states": [
+        {
+          "name": "New South Wales",
+          "code": "NSW",
+          "cities": [
+            "Sydney", "Newcastle", "Wollongong", "Maitland", "Albury", "Wagga Wagga", "Tamworth", "Orange", "Dubbo", "Nowra"
+          ]
+        },
+        {
+          "name": "Victoria",
+          "code": "VIC",
+          "cities": [
+            "Melbourne", "Geelong", "Ballarat", "Bendigo", "Shepparton", "Warrnambool", "Latrobe", "Mildura", "Horsham", "Wodonga"
+          ]
+        },
+        {
+          "name": "Queensland",
+          "code": "QLD",
+          "cities": [
+            "Brisbane", "Gold Coast", "Townsville", "Cairns", "Toowoomba", "Rockhampton", "Mackay", "Bundaberg", "Hervey Bay", "Gladstone"
+          ]
+        }
+      ]
+    }
+  ]
+}

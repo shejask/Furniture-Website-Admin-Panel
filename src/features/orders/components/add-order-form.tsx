@@ -399,7 +399,7 @@ export function AddOrderForm() {
           <CardContent>
             {selectedItems.length === 0 ? (
               <p className="text-muted-foreground text-center py-8">
-                No items added yet. Click "Add Item" to get started.
+                No items added yet. Click &quot;Add Item&quot; to get started.
               </p>
             ) : (
               <div className="space-y-4">

@@ -26,6 +26,7 @@ import {
   Share2
 } from 'lucide-react';
 import { useFirebaseData, useFirebaseOperations } from '@/hooks/use-firebase-database';
+import { useCustomerOrders } from '@/hooks/use-customer-orders';
 import { format } from 'date-fns';
 import { CustomerForm } from './customer-form';
 import { type CustomerFormData } from '../utils/form-schema';
@@ -37,13 +38,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from '@/components/ui/sheet';
 
 interface Address {
   id?: string;
@@ -75,12 +69,154 @@ interface Customer {
   lastLogin?: string;
 }
 
+// Customer Orders Section Component
+function CustomerOrdersSection({ customerId }: { customerId: string }) {
+  const { orders, loading, error } = useCustomerOrders(customerId);
+
+  const getOrderStatusBadge = (status: string) => {
+    const colors = {
+      'pending': 'bg-yellow-100 text-yellow-800',
+      'confirmed': 'bg-blue-100 text-blue-800',
+      'shipped': 'bg-purple-100 text-purple-800',
+      'delivered': 'bg-green-100 text-green-800',
+      'cancelled': 'bg-red-100 text-red-800'
+    };
+    
+    const colorClass = colors[status as keyof typeof colors] || colors.pending;
+    
+    return (
+      <Badge variant="outline" className={colorClass}>
+        {status.charAt(0).toUpperCase() + status.slice(1)}
+      </Badge>
+    );
+  };
+
+  const getPaymentStatusBadge = (status: string) => {
+    const colors = {
+      'pending': 'bg-yellow-100 text-yellow-800',
+      'completed': 'bg-green-100 text-green-800',
+      'failed': 'bg-red-100 text-red-800'
+    };
+    
+    const colorClass = colors[status as keyof typeof colors] || colors.pending;
+    
+    return (
+      <Badge variant="outline" className={colorClass}>
+        {status.charAt(0).toUpperCase() + status.slice(1)}
+      </Badge>
+    );
+  };
+
+  if (loading) {
+    return (
+      <div className="space-y-4">
+        <h3 className="text-lg font-semibold flex items-center gap-2">
+          <Calendar className="h-5 w-5" />
+          Orders
+        </h3>
+        <div className="flex items-center justify-center py-4">
+          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="space-y-4">
+        <h3 className="text-lg font-semibold flex items-center gap-2">
+          <Calendar className="h-5 w-5" />
+          Orders
+        </h3>
+        <div className="text-sm text-red-600 p-4 border rounded-lg bg-red-50">
+          Error loading orders: {error.message}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <h3 className="text-lg font-semibold flex items-center gap-2">
+        <Calendar className="h-5 w-5" />
+        Orders ({orders.length})
+      </h3>
+      <div className="space-y-3">
+        {orders.length > 0 ? (
+          orders.map((order) => (
+            <div key={order.id} className="border rounded-lg p-4 bg-muted/30">
+              <div className="flex justify-between items-start mb-3">
+                <div>
+                  <div className="font-medium text-sm">Order #{order.orderId}</div>
+                  <div className="text-xs text-muted-foreground">
+                    {format(new Date(order.createdAt), 'MMM dd, yyyy HH:mm')}
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className="font-semibold text-sm">₹{order.total.toFixed(2)}</div>
+                  <div className="text-xs text-muted-foreground">
+                    {order.items.length} item{order.items.length !== 1 ? 's' : ''}
+                  </div>
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4 mb-3">
+                <div>
+                  <Label className="text-xs text-muted-foreground">Order Status</Label>
+                  <div className="mt-1">{getOrderStatusBadge(order.orderStatus)}</div>
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">Payment Status</Label>
+                  <div className="mt-1">{getPaymentStatusBadge(order.paymentStatus)}</div>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-xs text-muted-foreground">Items</Label>
+                <div className="space-y-1">
+                  {order.items.map((item, index) => (
+                    <div key={index} className="text-sm flex justify-between">
+                      <span>{item.name} x{item.quantity}</span>
+                      <span>₹{(item.price * item.quantity).toFixed(2)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {order.address && (
+                <div className="mt-3 pt-3 border-t">
+                  <Label className="text-xs text-muted-foreground">Delivery Address</Label>
+                  <div className="text-sm mt-1">
+                    {order.address.firstName} {order.address.lastName}<br />
+                    {order.address.streetAddress}, {order.address.city}, {order.address.state} - {order.address.postalCode}
+                  </div>
+                </div>
+              )}
+
+              {order.orderNote && (
+                <div className="mt-3 pt-3 border-t">
+                  <Label className="text-xs text-muted-foreground">Order Note</Label>
+                  <div className="text-sm mt-1 italic">&quot;{order.orderNote}&quot;</div>
+                </div>
+              )}
+            </div>
+          ))
+        ) : (
+          <div className="text-sm text-muted-foreground p-4 border rounded-lg bg-muted/30">
+            No orders found for this customer
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function CustomersTable() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
-  const [isDetailSheetOpen, setIsDetailSheetOpen] = useState(false);
+  const [isDetailDialogOpen, setIsDetailDialogOpen] = useState(false);
   const [formData, setFormData] = useState<CustomerFormData>({
     uid: '',
     fullName: '',
@@ -160,7 +296,7 @@ export function CustomersTable() {
 
   const handleViewDetails = (customer: Customer) => {
     setSelectedCustomer(customer);
-    setIsDetailSheetOpen(true);
+    setIsDetailDialogOpen(true);
   };
 
   const handleDelete = async (id: string) => {
@@ -422,15 +558,15 @@ export function CustomersTable() {
         </CardContent>
       </Card>
 
-      {/* Customer Details Sheet */}
-      <Sheet open={isDetailSheetOpen} onOpenChange={setIsDetailSheetOpen}>
-        <SheetContent className="w-[400px] sm:w-[540px]">
-          <SheetHeader>
-            <SheetTitle>Customer Details</SheetTitle>
-            <SheetDescription>
+      {/* Customer Details Dialog */}
+      <Dialog open={isDetailDialogOpen} onOpenChange={setIsDetailDialogOpen}>
+        <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Customer Details</DialogTitle>
+            <DialogDescription>
               Complete information about the customer
-            </SheetDescription>
-          </SheetHeader>
+            </DialogDescription>
+          </DialogHeader>
           {selectedCustomer && (
             <div className="space-y-6 mt-6">
               {/* Basic Information */}
@@ -476,20 +612,84 @@ export function CustomersTable() {
                   <MapPin className="h-5 w-5" />
                   Address Information
                 </h3>
-                <div className="space-y-3">
+                <div className="space-y-4">
                   {selectedCustomer.addresses && Object.keys(selectedCustomer.addresses).length > 0 ? (
                     Object.entries(selectedCustomer.addresses as Record<string, Address>).map(([addrId, address]) => (
-                      <div key={addrId} className="border rounded p-3">
-                        <div className="font-medium text-sm">{address.addressName}</div>
-                        <div className="text-sm text-muted-foreground">{address.firstName} {address.lastName} • {address.phone}</div>
-                        <div className="text-sm">{address.streetAddress}, {address.city}, {address.state}, {address.country} - {address.zip}</div>
+                      <div key={addrId} className="border rounded-lg p-5 bg-muted/30">
+                        {/* Address Header */}
+                        <div className="flex items-center justify-between mb-4">
+                          <div className="font-semibold text-base text-primary">{address.addressName}</div>
+                          <div className="text-xs text-muted-foreground">
+                            {address.createdAt && format(new Date(address.createdAt), 'MMM dd, yyyy')}
+                          </div>
+                        </div>
+
+                        {/* Contact Information */}
+                        <div className="space-y-3">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                              <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Contact Person</Label>
+                              <div className="text-sm font-medium mt-1">
+                                {address.firstName} {address.lastName}
+                              </div>
+                            </div>
+                            <div>
+                              <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Phone Number</Label>
+                              <div className="text-sm font-medium mt-1 flex items-center gap-2">
+                                <Phone className="h-3 w-3" />
+                                {address.phone}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Full Address */}
+                          <div>
+                            <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Complete Address</Label>
+                            <div className="text-sm mt-2 space-y-1">
+                              <div className="font-medium">{address.streetAddress}</div>
+                              <div className="text-muted-foreground">
+                                {address.city}, {address.state}
+                              </div>
+                              <div className="text-muted-foreground">
+                                {address.country} - {address.zip}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Address Details Grid */}
+                          <div className="grid grid-cols-2 gap-4 pt-3 border-t">
+                            <div>
+                              <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">City</Label>
+                              <div className="text-sm font-medium mt-1">{address.city}</div>
+                            </div>
+                            <div>
+                              <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">State</Label>
+                              <div className="text-sm font-medium mt-1">{address.state}</div>
+                            </div>
+                            <div>
+                              <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Country</Label>
+                              <div className="text-sm font-medium mt-1">{address.country}</div>
+                            </div>
+                            <div>
+                              <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">ZIP Code</Label>
+                              <div className="text-sm font-medium mt-1">{address.zip}</div>
+                            </div>
+                          </div>
+                        </div>
                       </div>
                     ))
                   ) : (
-                    <div className="text-sm text-muted-foreground">No addresses available</div>
+                    <div className="text-center py-8 text-muted-foreground border rounded-lg bg-muted/30">
+                      <MapPin className="h-12 w-12 mx-auto mb-4 text-muted-foreground/50" />
+                      <p className="text-sm font-medium">No addresses available</p>
+                      <p className="text-xs mt-1">This customer hasn&apos;t added any addresses yet</p>
+                    </div>
                   )}
                 </div>
               </div>
+
+              {/* Orders Information */}
+              <CustomerOrdersSection customerId={selectedCustomer.uid} />
 
               
 
@@ -516,7 +716,7 @@ export function CustomersTable() {
                 <Button 
                   onClick={() => {
                     handleEdit(selectedCustomer);
-                    setIsDetailSheetOpen(false);
+                    setIsDetailDialogOpen(false);
                   }}
                   className="flex-1"
                 >
@@ -535,8 +735,8 @@ export function CustomersTable() {
               </div>
             </div>
           )}
-        </SheetContent>
-      </Sheet>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 } 

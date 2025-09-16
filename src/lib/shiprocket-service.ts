@@ -44,8 +44,8 @@ export interface ShiprocketOrderData {
 }
 
 export interface ShiprocketResponse {
-  order_id: number;
-  shipment_id: number;
+  order_id: string;
+  shipment_id: string;
   status: string;
   status_code: number;
   onboarding_completed_now: number;

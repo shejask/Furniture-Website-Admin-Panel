@@ -23,8 +23,8 @@ export const orderFormSchema = z.object({
   
   // Items (updated to match new structure)
   items: z.array(z.object({
-    productId: z.string().min(1, 'Product is required'),
-    productName: z.string().min(1, 'Product name is required'),
+    id: z.string().min(1, 'Product is required'),
+    name: z.string().min(1, 'Product name is required'),
     price: z.number().min(0, 'Price must be positive'),
     quantity: z.number().min(1, 'Quantity must be at least 1'),
     total: z.number().min(0, 'Total must be positive'),
@@ -35,7 +35,7 @@ export const orderFormSchema = z.object({
   paymentStatus: z.enum(['pending', 'completed', 'failed']),
   
   // Order Status (updated to match new structure)
-  orderStatus: z.enum(['pending', 'confirmed', 'shipped', 'delivered', 'cancelled']),
+  orderStatus: z.enum(['pending', 'confirmed', 'shipped', 'delivered', 'cancelled', 'refunded']),
   
   // Order totals
   subtotal: z.number().min(0, 'Subtotal must be positive'),
@@ -61,6 +61,10 @@ export interface OrderItem {
   quantity: number;
   thumbImage?: string | string[]; // Product thumbnail image(s)
   total?: number; // Calculated total (salePrice || price) * quantity
+  // Vendor information
+  vendor?: string; // Vendor ID
+  vendorEmail?: string; // Vendor email
+  vendorName?: string; // Vendor name
 }
 
 // Order address interface
@@ -85,13 +89,14 @@ export interface OrderAddress {
 export interface Order {
   id: string; // This will be the orderId
   orderId: string;
+  parentOrderId?: string; // For grouping individual product orders
   userId: string;
   userEmail: string;
   items: OrderItem[];
   address: OrderAddress;
   paymentMethod: 'razorpay' | 'cash-delivery';
   paymentStatus: 'pending' | 'completed' | 'failed';
-  orderStatus: 'pending' | 'confirmed' | 'shipped' | 'delivered' | 'cancelled';
+  orderStatus: 'pending' | 'confirmed' | 'shipped' | 'delivered' | 'cancelled' | 'refunded';
   subtotal: number;
   discount: number;
   shipping: number;
@@ -101,15 +106,24 @@ export interface Order {
   razorpayPaymentId?: string;
   razorpayOrderId?: string;
   
+  // Order-level vendor information
+  vendor?: string; // Vendor ID for single vendor orders
+  vendorName?: string;
+  vendorEmail?: string;
+  
   // Shiprocket integration fields
-  shiprocketOrderId?: number;
-  shiprocketShipmentId?: number;
+  shiprocketOrderId?: string;
+  shiprocketShipmentId?: string;
   awbCode?: string;
   courierName?: string;
   
   // Cancellation fields
   cancellationReason?: string;
   cancelledAt?: string;
+  
+  // Refund fields
+  refundReason?: string;
+  refundedAt?: string;
   
   // Timestamps
   createdAt: string;

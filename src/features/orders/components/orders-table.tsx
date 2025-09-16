@@ -71,7 +71,12 @@ export function OrdersTable() {
 
     // Payment status filter
     if (selectedPaymentStatus !== 'all') {
-      filtered = filtered.filter((order) => order.paymentStatus === selectedPaymentStatus);
+      if (selectedPaymentStatus === 'failed') {
+        // Filter for refunded orders when "Refund" is selected
+        filtered = filtered.filter((order) => order.orderStatus === 'refunded');
+      } else {
+        filtered = filtered.filter((order) => order.paymentStatus === selectedPaymentStatus);
+      }
     }
 
     // Sort by creation date (newest first)
@@ -86,14 +91,18 @@ export function OrdersTable() {
 
   const orderSummary: OrderSummary = useMemo(() => {
     const totalOrders = allOrders.length;
-    const totalRevenue = allOrders.reduce((sum, order) => sum + order.total, 0);
-    const averageOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : 0;
+    // Exclude refunded and cancelled orders from revenue calculation
+    const validOrders = allOrders.filter(order => 
+      order.orderStatus !== 'refunded' && order.orderStatus !== 'cancelled'
+    );
+    const totalRevenue = validOrders.reduce((sum, order) => sum + order.total, 0);
+    const averageOrderValue = validOrders.length > 0 ? totalRevenue / validOrders.length : 0;
     const pendingOrders = allOrders.filter(order => order.orderStatus === 'pending').length;
     const completedOrders = allOrders.filter(order => order.orderStatus === 'delivered').length;
     const cancelledOrders = allOrders.filter(order => order.orderStatus === 'cancelled').length;
 
-    // Find top customer
-    const customerStats = allOrders.reduce((acc, order) => {
+    // Find top customer (exclude refunded and cancelled orders)
+    const customerStats = validOrders.reduce((acc, order) => {
       if (!acc[order.userId]) {
         acc[order.userId] = {
           customerId: order.userId,
@@ -128,7 +137,7 @@ export function OrdersTable() {
         await deleteCustomerOrder(order.userId, order.orderId);
         refetch(); // Refresh the orders list
       } catch (error) {
-        console.error('Error deleting order:', error);
+        // console.error('Error deleting order:', error);
         alert('Failed to delete order. Please try again.');
       }
     }
@@ -152,35 +161,10 @@ export function OrdersTable() {
           alert(`Failed to approve order: ${result.errors.join(', ')}`);
         }
       } catch (error) {
-        console.error('Error approving order:', error);
+        // console.error('Error approving order:', error);
         alert('Failed to approve order. Please try again.');
       } finally {
         setApprovingOrder(null);
-      }
-    }
-  };
-
-  const handleCancelOrder = async (order: Order) => {
-    if (confirm('Are you sure you want to cancel this order? This action cannot be undone.')) {
-      try {
-        setRejectingOrder(order.id);
-        
-        const cancelledOrder = {
-          ...order,
-          orderStatus: 'cancelled' as const,
-          updatedAt: new Date().toISOString(),
-          cancellationReason: 'Cancelled by admin',
-          cancelledAt: new Date().toISOString()
-        };
-        
-        await updateCustomerOrder(order.userId, order.orderId, cancelledOrder);
-        refetch(); // Refresh the orders list
-        alert('Order cancelled successfully!');
-      } catch (error) {
-        console.error('Error cancelling order:', error);
-        alert('Failed to cancel order. Please try again.');
-      } finally {
-        setRejectingOrder(null);
       }
     }
   };
@@ -190,7 +174,7 @@ export function OrdersTable() {
     setConfirmDialogOpen(true);
   };
 
-  const handleConfirmOrder = async (order: Order, notes?: string) => {
+  const handleConfirmOrder = async (order: Order) => {
     if (!order) {
       alert('Invalid order data');
       return;
@@ -199,10 +183,10 @@ export function OrdersTable() {
     setApprovingOrder(order.id);
     try {
       // Use OrderActionManager to create the update
-      const orderUpdates = OrderActionManager.confirmOrder(order, {
-        performedBy: 'admin', // In real app, get from auth context
-        details: notes || 'Order confirmed and approved for processing'
-      });
+      // const orderUpdates = OrderActionManager.confirmOrder(order, {
+      //   performedBy: 'admin', // In real app, get from auth context
+      //   details: notes || 'Order confirmed and approved for processing'
+      // });
 
       // Update order status to confirmed
       const updatedOrder = {
@@ -265,17 +249,17 @@ export function OrdersTable() {
     setCancelDialogOpen(true);
   };
 
-  const handleCancelOrder = async (order: Order, reason: string, additionalDetails?: string) => {
+  const handleCancelOrder = async (order: Order, reason: string) => {
     if (!order) return;
     
     setRejectingOrder(order.id);
     try {
       // Use OrderActionManager to create the update
-      const orderUpdates = OrderActionManager.cancelOrder(order, {
-        performedBy: 'admin', // In real app, get from auth context
-        reason,
-        details: additionalDetails
-      });
+      // const orderUpdates = OrderActionManager.cancelOrder(order, {
+      //   performedBy: 'admin', // In real app, get from auth context
+      //   reason,
+      //   details: additionalDetails
+      // });
 
       // Update order status to cancelled
       const updatedOrder = {
@@ -314,7 +298,37 @@ export function OrdersTable() {
 
   const handleDownloadInvoice = async (order: Order) => {
     try {
-      await InvoiceGenerator.downloadInvoice(order);
+      // Convert Order to OrderData format
+      const orderData = {
+        orderNumber: order.orderId,
+        customerName: order.address.firstName && order.address.lastName 
+          ? `${order.address.firstName} ${order.address.lastName}` 
+          : order.address.addressName || 'Customer',
+        customerEmail: order.userEmail,
+        customerPhone: order.address.phone || '',
+        billingAddress: {
+          street: order.address.streetAddress || '',
+          city: order.address.city || '',
+          state: order.address.state || '',
+          country: order.address.country || '',
+          postalCode: order.address.zip || '',
+        },
+        products: order.items.map(item => ({
+          productName: item.name,
+          price: item.salePrice || item.price,
+          quantity: item.quantity,
+          total: (item.salePrice || item.price) * item.quantity,
+        })),
+        subtotal: order.subtotal,
+        tax: 0, // Add tax calculation if needed
+        shipping: order.shipping,
+        discount: order.discount,
+        total: order.total,
+        createdAt: order.createdAt,
+        paymentMethod: order.paymentMethod,
+        paymentStatus: order.paymentStatus,
+      };
+      await InvoiceGenerator.downloadInvoice(orderData);
     } catch {
       alert('Failed to generate invoice. Please try again later.');
     }
@@ -329,8 +343,33 @@ export function OrdersTable() {
       delivered: 'default',
       cancelled: 'destructive',
       returned: 'destructive',
+      refunded: 'destructive',
     };
-    return <Badge variant={variants[status] || 'secondary'}>{status}</Badge>;
+
+    // Custom styling for pending (orange) and others (light blue)
+    if (status === 'pending') {
+      return (
+        <Badge 
+          variant="secondary" 
+          className="bg-orange-500 text-white hover:bg-orange-600"
+        >
+          {status}
+        </Badge>
+      );
+    } else if (status === 'cancelled' || status === 'returned' || status === 'refunded') {
+      // Keep destructive styling for cancelled/returned/refunded
+      return <Badge variant={variants[status] || 'secondary'}>{status}</Badge>;
+    } else {
+      // Light blue for other statuses
+      return (
+        <Badge 
+          variant="secondary" 
+          className="bg-blue-100 text-blue-800 hover:bg-blue-200"
+        >
+          {status}
+        </Badge>
+      );
+    }
   };
 
   const getPaymentStatusBadge = (status: string) => {
@@ -440,7 +479,7 @@ export function OrdersTable() {
               <SelectItem value="all">All Payment</SelectItem>
               <SelectItem value="pending">Pending</SelectItem>
               <SelectItem value="completed">Completed</SelectItem>
-              <SelectItem value="failed">Failed</SelectItem>
+              <SelectItem value="failed">Refund</SelectItem>
             </SelectContent>
           </Select>
 
@@ -600,7 +639,7 @@ export function OrdersTable() {
                                       Approve Order
                                     </DropdownMenuItem>
                                     <DropdownMenuItem
-                                      onClick={() => handleCancelOrder(order)}
+                                      onClick={() => handleCancelOrder(order, 'Order cancelled by admin')}
                                       className="text-red-600"
                                     >
                                       <XCircle className="mr-2 h-4 w-4" />

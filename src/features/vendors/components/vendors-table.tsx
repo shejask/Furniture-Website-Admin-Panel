@@ -45,8 +45,6 @@ export function VendorsTable() {
   const [editingVendor, setEditingVendor] = useState<Vendor | null>(null);
   const [selectedVendor, setSelectedVendor] = useState<Vendor | null>(null);
   const [isDetailSheetOpen, setIsDetailSheetOpen] = useState(false);
-  const [isProductsSheetOpen, setIsProductsSheetOpen] = useState(false);
-  const [selectedVendorForProducts, setSelectedVendorForProducts] = useState<Vendor | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
 
   const { data: vendors, loading } = useFirebaseData('vendors');
@@ -114,19 +112,6 @@ export function VendorsTable() {
     setIsDetailSheetOpen(true);
   };
 
-  const handleViewProducts = (vendor: Vendor) => {
-    setSelectedVendorForProducts(vendor);
-    setIsProductsSheetOpen(true);
-  };
-
-  const getVendorProducts = (vendorId: string) => {
-    if (!products) return [];
-    
-    return Object.entries(products).filter(([, product]) => {
-      const productData = product as any;
-      return productData.vendorId === vendorId;
-    }).map(([productId, product]) => ({ id: productId, ...(product as any) }));
-  };
 
   const handleCancel = () => {
     setIsDialogOpen(false);
@@ -292,14 +277,6 @@ export function VendorsTable() {
                         </TableCell>
                                                  <TableCell className="text-right">
                            <div className="flex items-center justify-end gap-2">
-                             <Button
-                               variant="ghost"
-                               size="sm"
-                               onClick={() => handleViewProducts(vendor)}
-                               title="View Products"
-                             >
-                               <Package className="h-4 w-4" />
-                             </Button>
                              <Button
                                variant="ghost"
                                size="sm"
@@ -622,126 +599,6 @@ export function VendorsTable() {
         </DialogContent>
       </Dialog>
 
-       {/* Vendor Products Sheet */}
-       <Sheet open={isProductsSheetOpen} onOpenChange={setIsProductsSheetOpen}>
-         <SheetContent className="w-[800px] sm:w-[1000px] overflow-y-auto">
-           <SheetHeader>
-             <SheetTitle className="flex items-center gap-2">
-               <Package className="h-5 w-5" />
-               {selectedVendorForProducts?.storeName} - Products
-             </SheetTitle>
-             <SheetDescription>
-               View all products from this vendor
-             </SheetDescription>
-           </SheetHeader>
-           {selectedVendorForProducts && (
-             <div className="space-y-6 mt-6">
-               {/* Vendor Info */}
-               <Card>
-                 <CardHeader>
-                   <CardTitle className="flex items-center gap-2">
-                     <Store className="h-5 w-5" />
-                     Vendor Information
-                   </CardTitle>
-                 </CardHeader>
-                 <CardContent>
-                   <div className="flex items-center gap-4">
-                     {selectedVendorForProducts.storeLogo ? (
-                       <Image
-                         src={selectedVendorForProducts.storeLogo}
-                         alt={selectedVendorForProducts.storeName}
-                         width={64}
-                         height={64}
-                         className="rounded-lg object-cover"
-                       />
-                     ) : (
-                       <div className="w-16 h-16 bg-muted rounded-lg flex items-center justify-center">
-                         <Store className="h-8 w-8 text-muted-foreground" />
-                       </div>
-                     )}
-                     <div>
-                       <h3 className="text-lg font-semibold">{selectedVendorForProducts.storeName}</h3>
-                       <p className="text-sm text-muted-foreground">{selectedVendorForProducts.name}</p>
-                       <Badge variant={selectedVendorForProducts.status === 'active' ? 'default' : 'secondary'}>
-                         {selectedVendorForProducts.status}
-                       </Badge>
-                     </div>
-                   </div>
-                 </CardContent>
-               </Card>
-
-               {/* Products List */}
-               <Card>
-                 <CardHeader>
-                   <CardTitle className="flex items-center gap-2">
-                     <Package className="h-5 w-5" />
-                     Products ({getVendorProducts(selectedVendorForProducts.id).length})
-                   </CardTitle>
-                 </CardHeader>
-                 <CardContent>
-                   {productsLoading ? (
-                     <div className="flex items-center justify-center py-8">
-                       <div className="text-muted-foreground">Loading products...</div>
-                     </div>
-                   ) : (
-                     <div className="space-y-4">
-                       {getVendorProducts(selectedVendorForProducts.id).length === 0 ? (
-                         <div className="text-center py-8 text-muted-foreground">
-                           <Package className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-                           <p>No products found for this vendor</p>
-                           <p className="text-sm">Products will appear here when they are added to this vendor</p>
-                         </div>
-                       ) : (
-                         <div className="grid gap-4">
-                           {getVendorProducts(selectedVendorForProducts.id).map((product) => (
-                             <div key={product.id} className="flex items-center gap-4 p-4 border rounded-lg">
-                               <div className="w-16 h-16 bg-muted rounded-lg flex items-center justify-center">
-                                 {product.photo_url ? (
-                                   <Image
-                                     src={product.photo_url}
-                                     alt={product.name}
-                                     width={64}
-                                     height={64}
-                                     className="w-full h-full object-cover rounded-lg"
-                                   />
-                                 ) : (
-                                   <Package className="h-8 w-8 text-muted-foreground" />
-                                 )}
-                               </div>
-                               <div className="flex-1">
-                                 <h4 className="font-medium">{product.name}</h4>
-                                 <p className="text-sm text-muted-foreground line-clamp-2">
-                                   {product.description}
-                                 </p>
-                                 <div className="flex items-center gap-4 mt-2">
-                                   <Badge variant="outline">
-                                     ${product.price}
-                                   </Badge>
-                                   <Badge variant="secondary">
-                                     {product.category}
-                                   </Badge>
-                                   <span className="text-xs text-muted-foreground">
-                                     ID: {product.id}
-                                   </span>
-                                 </div>
-                               </div>
-                               <div className="text-right">
-                                 <p className="text-sm text-muted-foreground">
-                                   Created: {new Date(product.created_at).toLocaleDateString()}
-                                 </p>
-                               </div>
-                             </div>
-                           ))}
-                         </div>
-                       )}
-                     </div>
-                   )}
-                 </CardContent>
-               </Card>
-             </div>
-           )}
-         </SheetContent>
-       </Sheet>
      </div>
    );
  } 

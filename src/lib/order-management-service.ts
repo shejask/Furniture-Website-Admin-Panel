@@ -3,7 +3,7 @@ import { ShiprocketService, ShiprocketResponse } from './shiprocket-service';
 import { StockService, StockUpdateResult } from './stock-service';
 import { EmailService } from './email-service';
 import { updateCustomerOrder } from './firebase-orders';
-import { InvoiceGenerator } from './invoice-generator';
+// import { InvoiceGenerator } from './invoice-generator'; // Temporarily disabled
 
 export interface OrderConfirmationResult {
   success: boolean;
@@ -35,7 +35,33 @@ export class OrderManagementService {
     };
 
     try {
-      // Step 1: Update order status to confirmed
+      // Step 1: Check stock availability before proceeding
+      const stockCheck = await StockService.checkOrderStock(order);
+
+      if (!stockCheck.canFulfill) {
+        // If stock check fails, don't proceed with order confirmation
+        if (stockCheck.insufficientStock.length > 0) {
+          result.errors.push(`Cannot approve order - insufficient stock for: ${stockCheck.insufficientStock.map(s => `${s.productId} (need ${s.requested}, have ${s.available})`).join(', ')}`);
+        }
+        if (stockCheck.errors.length > 0) {
+          result.errors.push(`Stock check errors: ${stockCheck.errors.map(e => e.error).join(', ')}`);
+        }
+        return result; // Exit early if stock is insufficient
+      }
+
+      // Step 2: Reduce stock for all items
+      const stockResult = await StockService.reduceStockForOrder(order);
+      result.stockResult = stockResult;
+
+      if (!stockResult.success) {
+        result.errors.push(`Stock reduction failed: ${stockResult.errors.map(e => e.error).join(', ')}`);
+        if (stockResult.insufficientStock.length > 0) {
+          result.errors.push(`Insufficient stock for: ${stockResult.insufficientStock.map(s => `${s.productId} (need ${s.requested}, have ${s.available})`).join(', ')}`);
+        }
+        return result;
+      }
+
+      // Step 3: Update order status to confirmed
       const updatedOrder = {
         ...order,
         orderStatus: 'confirmed' as const,
@@ -44,25 +70,11 @@ export class OrderManagementService {
 
       await updateCustomerOrder(order.userId, order.orderId, updatedOrder);
 
-      // Step 2: Reduce stock for all items
-      try {
-        const stockResult = await StockService.reduceStockForOrder(order);
-        result.stockResult = stockResult;
+      // Stock has already been reduced in the check above
+      result.stockReduced = true;
+      console.log(`Stock reduced for ${stockResult.updatedProducts.length} products`);
 
-        if (stockResult.success) {
-          result.stockReduced = true;
-          console.log(`Stock reduced for ${stockResult.updatedProducts.length} products`);
-        } else {
-          result.errors.push(`Stock reduction failed: ${stockResult.errors.map(e => e.error).join(', ')}`);
-          if (stockResult.insufficientStock.length > 0) {
-            result.errors.push(`Insufficient stock for: ${stockResult.insufficientStock.map(s => `${s.productId} (need ${s.requested}, have ${s.available})`).join(', ')}`);
-          }
-        }
-      } catch (error) {
-        result.errors.push(`Stock reduction error: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      }
-
-      // Step 3: Create Shiprocket order (always try - service has fallback credentials)
+      // Step 4: Create Shiprocket order (always try - service has fallback credentials)
       try {
         const shiprocketResponse = await ShiprocketService.createOrder(updatedOrder);
         result.shiprocketData = shiprocketResponse;
@@ -91,43 +103,74 @@ export class OrderManagementService {
         console.warn('Shiprocket creation failed:', error);
       }
 
-      // Step 4: Send confirmation email
+      // Step 5: Send confirmation email and vendor notification
       try {
-        // Generate invoice
-        let invoiceBuffer: Buffer | undefined;
+        // Send vendor-style email to customer
         try {
-          invoiceBuffer = await InvoiceGenerator.generateInvoiceBuffer(updatedOrder);
-        } catch (error) {
-          result.warnings.push('Invoice generation failed - sending email without invoice');
-          console.warn('Invoice generation failed:', error);
-        }
-
-        // Send confirmation email using the main email API
-        try {
-          const emailResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3004'}/api/email`, {
+          const emailUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3004'}/api/email`;
+          console.log('📧 CUSTOMER EMAIL - Sending vendor-style email to customer:', updatedOrder.userEmail);
+          
+          const emailResponse = await fetch(emailUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              type: 'customer-order-confirmation',
+              type: 'vendor-order-notification',
               to: updatedOrder.userEmail,
-              data: updatedOrder
+              data: {
+                ...updatedOrder,
+                // Override customer name for the email
+                customerName: `${updatedOrder.address.firstName} ${updatedOrder.address.lastName}`,
+                orderDate: updatedOrder.createdAt
+              }
             })
           });
 
+          console.log('📧 CUSTOMER EMAIL - API response status:', emailResponse.status);
+          
+          if (!emailResponse.ok) {
+            throw new Error(`Email API returned ${emailResponse.status}: ${emailResponse.statusText}`);
+          }
+
           const emailResult = await emailResponse.json();
+          console.log('📧 CUSTOMER EMAIL - API result:', emailResult);
           result.emailSent = emailResult.success;
 
           if (emailResult.success) {
-            console.log('Order confirmation email sent successfully');
+            console.log('✅ CUSTOMER EMAIL - Vendor-style email sent successfully to customer');
           } else {
-            console.error('Email API returned error:', emailResult);
-            result.warnings.push(`Email failed: ${emailResult.error || 'Unknown error'}`);
+            console.error('❌ CUSTOMER EMAIL - Email API returned error:', emailResult);
+            result.warnings.push(`Customer email failed: ${emailResult.error || 'Unknown error'}`);
             if (emailResult.details) {
-              result.warnings.push(`Email error details: ${emailResult.details}`);
+              result.warnings.push(`Customer email error details: ${emailResult.details}`);
             }
           }
         } catch (emailError) {
-          result.warnings.push(`Email service error: ${emailError instanceof Error ? emailError.message : 'Unknown error'}`);
+          console.error('❌ CUSTOMER EMAIL - Email service error:', emailError);
+          if (emailError instanceof TypeError && emailError.message.includes('fetch')) {
+            result.warnings.push(`Customer email service error: Unable to connect to email API. Please check if the server is running.`);
+          } else {
+            result.warnings.push(`Customer email service error: ${emailError instanceof Error ? emailError.message : 'Unknown error'}`);
+          }
+        }
+
+        // Send vendor notification if vendor email exists
+        if (updatedOrder.vendorEmail) {
+          try {
+            console.log('📧 VENDOR EMAIL - Sending vendor notification to:', updatedOrder.vendorEmail);
+            const vendorEmailSent = await EmailService.sendVendorOrderNotification(updatedOrder);
+            if (vendorEmailSent) {
+              console.log('✅ VENDOR EMAIL - Vendor notification email sent successfully');
+            } else {
+              console.error('❌ VENDOR EMAIL - Vendor notification email failed to send');
+              result.warnings.push('Vendor notification email failed to send');
+            }
+          } catch (error) {
+            console.error('❌ VENDOR EMAIL - Vendor email error:', error);
+            result.warnings.push(`Vendor email error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+          }
+        } else {
+          console.log('⚠️ VENDOR EMAIL - No vendor email found - vendor notification not sent');
+          result.warnings.push('No vendor email found - vendor notification not sent');
         }
 
         // Send shipping confirmation if we have tracking info
@@ -230,6 +273,68 @@ export class OrderManagementService {
       return result;
     } catch (error) {
       result.errors.push(`Order cancellation failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      return result;
+    }
+  }
+
+  /**
+   * Process order refund
+   */
+  static async processRefund(order: Order, refundReason: string): Promise<{
+    success: boolean;
+    stockRestored: boolean;
+    emailSent: boolean;
+    errors: string[];
+  }> {
+    const result = {
+      success: false,
+      stockRestored: false,
+      emailSent: false,
+      errors: [],
+    };
+
+    try {
+      // Update order status to refunded
+      const refundedOrder = {
+        ...order,
+        orderStatus: 'refunded' as const,
+        refundReason: refundReason,
+        refundedAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+
+      await updateCustomerOrder(order.userId, order.orderId, refundedOrder);
+
+      // Restore stock if order was confirmed/shipped (stock was reduced)
+      if (order.orderStatus === 'confirmed' || order.orderStatus === 'shipped' || order.orderStatus === 'delivered') {
+        try {
+          const stockResult = await StockService.restoreStockForOrder(order);
+          result.stockRestored = stockResult.success;
+
+          if (!stockResult.success) {
+            result.errors.push(`Stock restoration failed: ${stockResult.errors.map(e => e.error).join(', ')}`);
+          }
+        } catch (error) {
+          result.errors.push(`Stock restoration error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
+      }
+
+      // Send refund confirmation email
+      try {
+        const emailSent = await EmailService.sendRefundConfirmationEmail(refundedOrder, refundReason);
+        result.emailSent = emailSent;
+
+        if (!emailSent) {
+          result.errors.push('Refund confirmation email failed to send');
+        }
+      } catch (error) {
+        result.errors.push(`Email service error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
+
+      result.success = result.errors.length === 0;
+      return result;
+    } catch (error) {
+      result.errors.push(`Refund processing failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
       return result;
     }
   }

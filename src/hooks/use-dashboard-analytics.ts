@@ -58,8 +58,12 @@ export function useDashboardAnalytics(): {
       ...(customer as any)
     }));
 
-    // Calculate analytics
-    const totalRevenue = ordersArray.reduce((sum, order) => {
+    // Calculate analytics - exclude cancelled and refunded orders
+    const validOrders = ordersArray.filter(order => 
+      order.orderStatus !== 'cancelled' && order.orderStatus !== 'refunded'
+    );
+    
+    const totalRevenue = validOrders.reduce((sum, order) => {
       return sum + (order.total || order.amount || 0);
     }, 0);
 
@@ -73,9 +77,9 @@ export function useDashboardAnalytics(): {
     const productsGrowth = 5.1;
     const customersGrowth = 15.3;
 
-    // Top products by revenue
+    // Top products by revenue - use valid orders only
     const productRevenue = new Map();
-    ordersArray.forEach(order => {
+    validOrders.forEach(order => {
       if (order.items) {
         order.items.forEach((item: any) => {
           const revenue = productRevenue.get(item.productId) || 0;
@@ -117,7 +121,7 @@ export function useDashboardAnalytics(): {
       const monthStart = new Date(month.getFullYear(), month.getMonth(), 1);
       const monthEnd = new Date(month.getFullYear(), month.getMonth() + 1, 0);
       
-      const monthOrders = ordersArray.filter(order => {
+      const monthOrders = validOrders.filter(order => {
         const orderDate = new Date(order.createdAt || 0);
         return orderDate >= monthStart && orderDate <= monthEnd;
       });

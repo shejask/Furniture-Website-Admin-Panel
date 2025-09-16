@@ -12,25 +12,24 @@ import {
   MapPin, 
   Package, 
   DollarSign,
-  Calendar,
   CreditCard,
   History,
   XCircle,
   AlertTriangle,
-  Edit,
   Trash2,
   Download,
   CheckCircle,
-  XCircle,
   ExternalLink,
   Truck,
-  MapPinIcon,
   Clock,
-  Info
+  Info,
+  Store
 } from 'lucide-react';
 import { Order } from '../utils/form-schema';
-import { getAllOrders, deleteCustomerOrder, updateCustomerOrder } from '@/lib/firebase-orders';
+import { getAllOrders, deleteCustomerOrder } from '@/lib/firebase-orders';
 import { OrderManagementService } from '@/lib/order-management-service';
+import { StockService } from '@/lib/stock-service';
+import { InvoiceGenerator } from '@/lib/invoice-generator';
 import Image from 'next/image';
 
 interface OrderDetailsPageProps {
@@ -44,6 +43,15 @@ export function OrderDetailsPage({ orderId }: OrderDetailsPageProps) {
   const [error, setError] = useState<string | null>(null);
   const [approvingOrder, setApprovingOrder] = useState(false);
   const [cancellingOrder, setCancellingOrder] = useState(false);
+  const [refundingOrder, setRefundingOrder] = useState(false);
+  const [stockStatus, setStockStatus] = useState<{
+    canFulfill: boolean;
+    insufficientStock: Array<{
+      productId: string;
+      requested: number;
+      available: number;
+    }>;
+  } | null>(null);
 
   useEffect(() => {
     const fetchOrder = async () => {
@@ -54,6 +62,16 @@ export function OrderDetailsPage({ orderId }: OrderDetailsPageProps) {
         
         if (foundOrder) {
           setOrder(foundOrder);
+          // Check stock status for the order
+          try {
+            const stockCheck = await StockService.checkOrderStock(foundOrder);
+            setStockStatus({
+              canFulfill: stockCheck.canFulfill,
+              insufficientStock: stockCheck.insufficientStock,
+            });
+          } catch (err) {
+            console.error('Error checking stock status:', err);
+          }
         } else {
           setError('Order not found');
         }
@@ -85,14 +103,56 @@ export function OrderDetailsPage({ orderId }: OrderDetailsPageProps) {
   };
 
   const handleDownloadInvoice = async () => {
-    // TODO: Implement invoice download functionality
-    alert('Invoice download functionality will be implemented soon.');
+    if (!order) return;
+    
+    try {
+      // Convert order data to invoice format
+      const invoiceData = {
+        orderNumber: order.orderId,
+        customerName: order.address.firstName && order.address.lastName 
+          ? `${order.address.firstName} ${order.address.lastName}` 
+          : order.address.addressName || 'Customer',
+        customerEmail: order.userEmail,
+        customerPhone: order.address.phone || 'N/A',
+        billingAddress: {
+          street: order.address.streetAddress || order.address.street || '',
+          city: order.address.city || '',
+          state: order.address.state || '',
+          country: order.address.country || 'India',
+          postalCode: order.address.zip || order.address.postalCode || '',
+        },
+        products: order.items.map(item => ({
+          productName: item.name,
+          price: item.salePrice || item.price || 0,
+          quantity: item.quantity || 0,
+          total: (item.salePrice || item.price || 0) * (item.quantity || 0),
+        })),
+        subtotal: order.subtotal || 0,
+        tax: Math.round((order.subtotal || 0) * 0.18), // 18% GST
+        shipping: order.shipping || 0,
+        discount: order.discount || 0,
+        total: order.total || 0,
+        createdAt: order.createdAt,
+        paymentMethod: order.paymentMethod || 'razorpay',
+        paymentStatus: order.paymentStatus || 'pending',
+      };
+
+      // Generate and download invoice
+      await InvoiceGenerator.downloadInvoice(invoiceData);
+    } catch (error) {
+      console.error('Error downloading invoice:', error);
+      alert('Failed to download invoice. Please try again.');
+    }
   };
 
   const handleApproveOrder = async () => {
     if (!order) return;
     
-    if (confirm('Are you sure you want to approve this order? This will:\n\n• Confirm the order\n• Reduce product stock\n• Create shipping label (if Shiprocket is configured)\n• Send confirmation email to customer')) {
+    const stockMessage = stockStatus && !stockStatus.canFulfill 
+      ? '\n\n⚠️ WARNING: Some items have insufficient stock and cannot be fulfilled!'
+      : '';
+    
+    if (confirm('Are you sure you want to approve this order? This will:\n\n• Confirm the order\n• Reduce product stock\n• Create shipping label (if Shiprocket is configured)\n• Send confirmation email to customer\n• Send order details to vendor' + stockMessage)) {
       try {
         setApprovingOrder(true);
         
@@ -119,6 +179,9 @@ export function OrderDetailsPage({ orderId }: OrderDetailsPageProps) {
           }
           if (result.emailSent) {
             details.push('✓ Confirmation email sent to customer');
+          }
+          if (order.vendorEmail) {
+            details.push('✓ Vendor notification sent');
           }
           
           if (details.length > 0) {
@@ -159,30 +222,105 @@ export function OrderDetailsPage({ orderId }: OrderDetailsPageProps) {
     
     setCancellingOrder(true);
     try {
-      // Update order status to cancelled in Firebase
-      const { updateCustomerOrder } = await import('@/lib/firebase-orders');
+      // Use the comprehensive order management service for cancellation
+      const result = await OrderManagementService.cancelOrder(order, 'Cancelled by admin');
       
-      const cancelledOrder = {
-        ...order,
-        orderStatus: 'cancelled' as const,
-        updatedAt: new Date().toISOString(),
-        cancellationReason: 'Cancelled by admin',
-        cancelledAt: new Date().toISOString()
-      };
-      
-      await updateCustomerOrder(order.userId, order.orderId, cancelledOrder);
-      
-      // Update local state
-      setOrder(cancelledOrder);
-      
-      alert('Order cancelled successfully!');
+      if (result.success) {
+        // Refresh the order data
+        const orders = await getAllOrders();
+        const updatedOrder = orders.find(o => o.orderId === order.orderId || o.id === order.orderId);
+        if (updatedOrder) {
+          setOrder(updatedOrder);
+        }
+        
+        // Show detailed success message
+        let successMessage = 'Order cancelled successfully!';
+        const details = [];
+        
+        if (result.stockRestored) {
+          details.push('✓ Stock restored for cancelled items');
+        }
+        if (result.emailSent) {
+          details.push('✓ Cancellation email sent to customer');
+        }
+        
+        if (details.length > 0) {
+          successMessage += '\n\n' + details.join('\n');
+        }
+        
+        if (result.errors.length > 0) {
+          successMessage += '\n\nWarnings:\n' + result.errors.map(e => `⚠ ${e}`).join('\n');
+        }
+        
+        alert(successMessage);
+      } else {
+        // Show error details
+        let errorMessage = 'Order cancellation failed:';
+        errorMessage += '\n\n' + result.errors.map(e => `✗ ${e}`).join('\n');
+        alert(errorMessage);
+      }
     } catch (error) {
       console.error('Failed to cancel order:', error);
-      alert('Failed to cancel order. Please try again.');
+      alert('Failed to cancel order. Please try again.\n\nError: ' + (error instanceof Error ? error.message : 'Unknown error'));
     } finally {
       setCancellingOrder(false);
     }
   };
+
+  const handleRefundOrder = async () => {
+    if (!order) return;
+    
+    if (!confirm(`Are you sure you want to refund this order?\n\nRefund Amount: ₹${order.total.toFixed(2)}\n\nThis action will:\n• Process the refund\n• Restore product stock\n• Send refund confirmation email`)) {
+      return;
+    }
+    
+    setRefundingOrder(true);
+    try {
+      // Use the comprehensive order management service for refund
+      const result = await OrderManagementService.processRefund(order, 'Refund processed by admin');
+      
+      if (result.success) {
+        // Refresh the order data
+        const orders = await getAllOrders();
+        const updatedOrder = orders.find(o => o.orderId === order.orderId || o.id === order.orderId);
+        if (updatedOrder) {
+          setOrder(updatedOrder);
+        }
+        
+        // Show detailed success message
+        let successMessage = 'Order refunded successfully!';
+        const details = [];
+        
+        if (result.stockRestored) {
+          details.push('✓ Stock restored for refunded items');
+        }
+        if (result.emailSent) {
+          details.push('✓ Refund confirmation email sent to customer');
+        }
+        
+        if (details.length > 0) {
+          successMessage += '\n\n' + details.join('\n');
+        }
+        
+        if (result.errors.length > 0) {
+          successMessage += '\n\nWarnings:\n' + result.errors.map(e => `⚠ ${e}`).join('\n');
+        }
+        
+        alert(successMessage);
+      } else {
+        // Show error details
+        let errorMessage = 'Order refund failed:';
+        errorMessage += '\n\n' + result.errors.map(e => `✗ ${e}`).join('\n');
+        alert(errorMessage);
+      }
+    } catch (error) {
+      console.error('Failed to refund order:', error);
+      alert('Failed to refund order. Please try again.\n\nError: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    } finally {
+      setRefundingOrder(false);
+    }
+  };
+
 
   const getStatusBadge = (status: string) => {
     const variants: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
@@ -192,6 +330,7 @@ export function OrderDetailsPage({ orderId }: OrderDetailsPageProps) {
       shipped: 'default',
       delivered: 'default',
       cancelled: 'destructive',
+      refunded: 'destructive',
       returned: 'destructive',
     };
     return <Badge variant={variants[status] || 'secondary'}>{status}</Badge>;
@@ -278,42 +417,63 @@ export function OrderDetailsPage({ orderId }: OrderDetailsPageProps) {
         
         <div className="flex items-center gap-2">
           {order.orderStatus === 'pending' && (
-            <>
-              <Button 
-                onClick={handleApproveOrder}
-                disabled={approvingOrder}
-                className="bg-green-600 hover:bg-green-700 text-white"
-              >
-                {approvingOrder ? (
-                  <>
-                    <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                    Approving...
-                  </>
-                ) : (
-                  <>
-                    <CheckCircle className="mr-2 h-4 w-4" />
-                    Approve Order
-                  </>
-                )}
-              </Button>
-              <Button 
-                onClick={handleCancelOrder}
-                disabled={cancellingOrder}
-                variant="destructive"
-              >
-                {cancellingOrder ? (
-                  <>
-                    <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                    Cancelling...
-                  </>
-                ) : (
-                  <>
-                    <XCircle className="mr-2 h-4 w-4" />
-                    Cancel Order
-                  </>
-                )}
-              </Button>
-            </>
+            <Button 
+              onClick={handleApproveOrder}
+              disabled={approvingOrder || (stockStatus ? !stockStatus.canFulfill : false)}
+              className="bg-green-600 hover:bg-green-700 text-white disabled:bg-gray-400 disabled:cursor-not-allowed"
+              title={stockStatus && !stockStatus.canFulfill ? "Cannot approve order - insufficient stock" : "Approve this order"}
+            >
+              {approvingOrder ? (
+                <>
+                  <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                  Approving...
+                </>
+              ) : (
+                <>
+                  <CheckCircle className="mr-2 h-4 w-4" />
+                  Approve Order
+                </>
+              )}
+            </Button>
+          )}
+          {(order.orderStatus === 'pending' || order.orderStatus === 'confirmed' || order.orderStatus === 'shipped' || order.orderStatus === 'delivered') && (
+            <Button 
+              onClick={handleCancelOrder}
+              disabled={cancellingOrder}
+              variant="destructive"
+            >
+              {cancellingOrder ? (
+                <>
+                  <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                  Cancelling...
+                </>
+              ) : (
+                <>
+                  <XCircle className="mr-2 h-4 w-4" />
+                  Cancel Order
+                </>
+              )}
+            </Button>
+          )}
+          {(order.orderStatus === 'confirmed' || order.orderStatus === 'shipped' || order.orderStatus === 'delivered') && (
+            <Button 
+              onClick={handleRefundOrder}
+              disabled={refundingOrder}
+              variant="destructive"
+              className="bg-orange-800 hover:bg-orange-900 text-white"
+            >
+              {refundingOrder ? (
+                <>
+                  <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                  Refunding...
+                </>
+              ) : (
+                <>
+                  <DollarSign className="mr-2 h-4 w-4" />
+                  Refund
+                </>
+              )}
+            </Button>
           )}
           <Button variant="outline" onClick={handleDownloadInvoice}>
             <Download className="mr-2 h-4 w-4" />
@@ -361,6 +521,49 @@ export function OrderDetailsPage({ orderId }: OrderDetailsPageProps) {
             </CardContent>
           </Card>
 
+          {/* Stock Status */}
+          {stockStatus && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Package className="h-5 w-5" />
+                  Stock Status
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {stockStatus.canFulfill ? (
+                  <div className="flex items-center gap-2 text-green-600">
+                    <CheckCircle className="h-5 w-5" />
+                    <span className="font-medium">All items have sufficient stock</span>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2 text-red-600">
+                      <XCircle className="h-5 w-5" />
+                      <span className="font-medium">Insufficient stock for some items</span>
+                    </div>
+                    <div className="space-y-2">
+                      {stockStatus.insufficientStock.map((item, index) => {
+                        const productName = order?.items.find(i => i.id === item.productId)?.name || item.productId;
+                        return (
+                          <div key={index} className="flex items-center justify-between p-3 bg-red-50 rounded border border-red-200">
+                            <div className="flex items-center gap-2">
+                              <AlertTriangle className="h-4 w-4 text-red-500" />
+                              <span className="font-medium text-gray-900">{productName}</span>
+                            </div>
+                            <div className="text-sm font-semibold text-red-700 bg-red-100 px-2 py-1 rounded">
+                              Need: {item.requested} | Available: {item.available}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
           {/* Customer Information */}
           <Card>
             <CardHeader>
@@ -384,6 +587,39 @@ export function OrderDetailsPage({ orderId }: OrderDetailsPageProps) {
               </div>
             </CardContent>
           </Card>
+
+          {/* Order Vendor Information */}
+          {order.vendorName && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Store className="h-5 w-5" />
+                  Order Vendor
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
+                    <Store className="h-6 w-6 text-blue-600" />
+                  </div>
+                  <div className="flex-1">
+                    <div className="font-semibold text-lg">{order.vendorName}</div>
+                    <div className="text-sm text-muted-foreground">
+                      {order.vendorEmail && (
+                        <span className="flex items-center gap-1">
+                          <Mail className="h-4 w-4" />
+                          {order.vendorEmail}
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-xs text-muted-foreground mt-1">
+                      Vendor ID: {order.vendor}
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           {/* Delivery Address */}
           <Card>
@@ -444,7 +680,7 @@ export function OrderDetailsPage({ orderId }: OrderDetailsPageProps) {
                 <div className="space-y-4">
                   {order.items.map((item, index) => {
                     // The item already contains all the product details from the database
-                    // item structure: { id, name, price, salePrice, quantity, thumbImage }
+                    // item structure: { id, name, price, salePrice, quantity, thumbImage, vendor, vendorEmail, vendorName }
                     const itemTotal = (item.salePrice || item.price || 0) * (item.quantity || 0);
                     
                     return (
@@ -501,6 +737,13 @@ export function OrderDetailsPage({ orderId }: OrderDetailsPageProps) {
                               Sale Price: ₹{item.salePrice.toFixed(2)} (was ₹{item.price.toFixed(2)})
                             </div>
                           )}
+                          {/* Vendor Information */}
+                          {item.vendorName && (
+                            <div className="flex items-center gap-1 mt-2 text-xs text-blue-600">
+                              <Store className="h-3 w-3" />
+                              <span>Vendor: {item.vendorName}</span>
+                            </div>
+                          )}
                         </div>
                         
                         {/* Price */}
@@ -514,6 +757,53 @@ export function OrderDetailsPage({ orderId }: OrderDetailsPageProps) {
               )}
             </CardContent>
           </Card>
+
+          {/* Item-Level Vendor Information */}
+          {order.items && order.items.length > 0 && order.items.some(item => item.vendorName) && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Store className="h-5 w-5" />
+                  Product Vendors
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {order.items
+                    .filter(item => item.vendorName)
+                    .map((item, index) => (
+                      <div key={index} className="flex items-center justify-between p-3 border rounded-lg">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
+                            <Store className="h-5 w-5 text-green-600" />
+                          </div>
+                          <div>
+                            <div className="font-medium">{item.vendorName}</div>
+                            <div className="text-sm text-muted-foreground">
+                              {item.vendorEmail && (
+                                <span className="flex items-center gap-1">
+                                  <Mail className="h-3 w-3" />
+                                  {item.vendorEmail}
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              Vendor ID: {item.vendor}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-sm font-medium">{item.name}</div>
+                          <div className="text-xs text-muted-foreground">
+                            Qty: {item.quantity}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </div>
 
         {/* Sidebar */}
