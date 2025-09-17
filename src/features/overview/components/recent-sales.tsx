@@ -40,8 +40,8 @@ export function RecentSales() {
         return {
           id: order.id,
           customer: customerName,
-          amount: order.totalAmount || order.total || 0,
-          status: order.orderStatus || order.status || 'pending',
+          amount: order.total || 0,
+          status: order.orderStatus || 'pending',
           date: order.createdAt || new Date().toISOString()
         };
       });

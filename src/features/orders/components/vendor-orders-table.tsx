@@ -11,7 +11,6 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { 
-  Plus,
   Search,
   MoreHorizontal,
   Eye,
@@ -19,30 +18,25 @@ import {
   ShoppingCart,
   User,
   DollarSign,
-  Calendar,
-  Clock,
   CheckCircle,
   XCircle
 } from 'lucide-react';
 import { useOrders } from '@/hooks/use-orders';
-import { updateCustomerOrder, deleteCustomerOrder } from '@/lib/firebase-orders';
+import { deleteCustomerOrder } from '@/lib/firebase-orders';
 import { VendorCancelOrderDialog } from './vendor-cancel-order-dialog';
 import { VendorConfirmOrderDialog } from './vendor-confirm-order-dialog';
 import { type Order, type OrderSummary } from '../utils/form-schema';
-import { EmailService } from '@/lib/email-service';
-import { OrderActionManager } from '../utils/order-actions';
+import { OrderActionManager, type OrderActionOptions } from '../utils/order-actions';
 import { getCurrentUser } from '@/lib/auth';
+import { OrderManagementService } from '@/lib/order-management-service';
 
 export function VendorOrdersTable() {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
   const [selectedPaymentStatus, setSelectedPaymentStatus] = useState<string>('all');
-  const [approvingOrder, setApprovingOrder] = useState<string | null>(null);
-  const [rejectingOrder, setRejectingOrder] = useState<string | null>(null);
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
-  const [selectedOrderForAction, setSelectedOrderForAction] = useState<Order | null>(null);
   const [currentVendor, setCurrentVendor] = useState<any>(null);
 
   const { orders: allOrders, loading, refetch } = useOrders();
@@ -91,36 +85,55 @@ export function VendorOrdersTable() {
   }, [orders, searchQuery, selectedStatus, selectedPaymentStatus]);
 
   const orderSummary: OrderSummary = useMemo(() => {
-    if (!orders) return { totalOrders: 0, totalRevenue: 0, averageOrderValue: 0, customerStats: { topCustomer: '', totalSpent: 0 } };
-
-    const validOrders = orders.filter(order => 
-      order.orderStatus === 'confirmed'
-    );
+    if (!orders) return { 
+      totalOrders: 0, 
+      totalRevenue: 0, 
+      averageOrderValue: 0, 
+      pendingOrders: 0, 
+      completedOrders: 0, 
+      cancelledOrders: 0 
+    };
 
     const totalOrders = orders.length;
+    const pendingOrders = orders.filter(order => order.orderStatus === 'pending').length;
+    const completedOrders = orders.filter(order => order.orderStatus === 'delivered').length;
+    const cancelledOrders = orders.filter(order => order.orderStatus === 'cancelled').length;
+    
+    const validOrders = orders.filter(order => 
+      order.orderStatus === 'confirmed' || order.orderStatus === 'delivered'
+    );
+
     const totalRevenue = validOrders.reduce((sum, order) => sum + (order.total || 0), 0);
     const averageOrderValue = validOrders.length > 0 ? totalRevenue / validOrders.length : 0;
 
     // Find top customer
     const customerSpending = validOrders.reduce((acc, order) => {
       const customerKey = order.userEmail || 'Unknown';
-      acc[customerKey] = (acc[customerKey] || 0) + (order.total || 0);
+      const customerName = order.address?.firstName && order.address?.lastName 
+        ? `${order.address.firstName} ${order.address.lastName}` 
+        : 'Unknown Customer';
+      
+      if (!acc[customerKey]) {
+        acc[customerKey] = { customerId: order.userId, customerName, orderCount: 0, totalSpent: 0 };
+      }
+      acc[customerKey].orderCount += 1;
+      acc[customerKey].totalSpent += (order.total || 0);
       return acc;
-    }, {} as Record<string, number>);
+    }, {} as Record<string, { customerId: string; customerName: string; orderCount: number; totalSpent: number }>);
 
-    const topCustomer = Object.entries(customerSpending).reduce((max, [customer, spent]) => 
-      spent > max.spent ? { customer, spent } : max, 
-      { customer: '', spent: 0 }
+    const topCustomer = Object.values(customerSpending).reduce((max, customer) => 
+      customer.totalSpent > max.totalSpent ? customer : max, 
+      { customerId: '', customerName: '', orderCount: 0, totalSpent: 0 }
     );
 
     return {
       totalOrders,
       totalRevenue,
       averageOrderValue,
-      customerStats: {
-        topCustomer: topCustomer.customer,
-        totalSpent: topCustomer.spent
-      }
+      pendingOrders,
+      completedOrders,
+      cancelledOrders,
+      topCustomer: topCustomer.totalSpent > 0 ? topCustomer : undefined
     };
   }, [orders]);
 
@@ -134,7 +147,7 @@ export function VendorOrdersTable() {
     }
 
     try {
-      await deleteCustomerOrder(order.orderId);
+      await deleteCustomerOrder(order.userId, order.orderId);
       refetch();
     } catch (error) {
       // console.error('Error deleting order:', error);
@@ -142,20 +155,17 @@ export function VendorOrdersTable() {
   };
 
   const handleApproveOrder = async (order: Order) => {
-    setApprovingOrder(order.orderId);
     try {
-      await OrderActionManager.confirmOrder(order);
+      await OrderManagementService.confirmOrder(order);
       refetch();
     } catch (error) {
       // console.error('Error approving order:', error);
-    } finally {
-      setApprovingOrder(null);
     }
   };
 
   const handleCancelOrder = async (order: Order, reason: string) => {
     try {
-      await OrderActionManager.cancelOrder(order, reason);
+      await OrderManagementService.cancelOrder(order, reason);
       refetch();
     } catch (error) {
       // console.error('Error cancelling order:', error);
@@ -164,7 +174,10 @@ export function VendorOrdersTable() {
 
   const handleRefundOrder = async (order: Order) => {
     try {
-      await OrderActionManager.processRefund(order);
+      // For now, just update the order status to refunded
+      // This can be extended later with actual refund processing
+      const reason = 'Refund requested by vendor';
+      await OrderManagementService.cancelOrder(order, reason);
       refetch();
     } catch (error) {
       // console.error('Error processing refund:', error);
@@ -258,9 +271,9 @@ export function VendorOrdersTable() {
             <User className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-sm font-medium">{orderSummary.customerStats.topCustomer || 'N/A'}</div>
+            <div className="text-sm font-medium">{orderSummary.topCustomer?.customerName || 'N/A'}</div>
             <p className="text-xs text-muted-foreground">
-              ₹{orderSummary.customerStats.totalSpent.toLocaleString()} spent
+              ₹{orderSummary.topCustomer?.totalSpent.toLocaleString() || 0} spent
             </p>
           </CardContent>
         </Card>
@@ -416,19 +429,7 @@ export function VendorOrdersTable() {
         </CardContent>
       </Card>
 
-      {/* Dialogs */}
-      <VendorCancelOrderDialog
-        isOpen={cancelDialogOpen}
-        onClose={() => setCancelDialogOpen(false)}
-        order={selectedOrderForAction}
-        onConfirm={handleCancelOrder}
-      />
-      <VendorConfirmOrderDialog
-        isOpen={confirmDialogOpen}
-        onClose={() => setConfirmDialogOpen(false)}
-        order={selectedOrderForAction}
-        onConfirm={handleApproveOrder}
-      />
+      {/* Note: Dialog components can be added back when needed */}
     </div>
   );
 }

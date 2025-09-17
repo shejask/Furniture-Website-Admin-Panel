@@ -1,43 +1,23 @@
 'use client';
 
 import { useState, useMemo, useEffect } from 'react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
   DollarSign, 
   TrendingUp, 
   CreditCard, 
-  Users, 
-  CheckCircle, 
-  Clock, 
-  Download,
-  BarChart3,
-  PieChart,
-  Activity,
-  ArrowUpRight,
-  ArrowDownRight,
-  Search
+  CheckCircle
 } from 'lucide-react';
-import { useFirebaseData } from '@/hooks/use-firebase-database';
 import { useOrders } from '@/hooks/use-orders';
-import { type Payment, type PaymentAnalytics } from '../utils/form-schema';
+import { type PaymentAnalytics } from '../utils/form-schema';
 import { getCurrentUser } from '@/lib/auth';
 
 export function VendorPaymentsAnalytics() {
-  const [selectedPeriod, setSelectedPeriod] = useState<string>('30d');
-  const [selectedCurrency, setSelectedCurrency] = useState<string>('INR');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedStatus, setSelectedStatus] = useState<string>('all');
-  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string>('all');
   const [currentVendor, setCurrentVendor] = useState<any>(null);
 
   const { orders, loading: ordersLoading } = useOrders();
-  const { data: customers } = useFirebaseData('customers');
 
   useEffect(() => {
     const user = getCurrentUser();
@@ -70,41 +50,32 @@ export function VendorPaymentsAnalytics() {
       ) // Only confirmed orders with Razorpay payments count for revenue
       .map(order => ({
         id: order.orderId,
+        transactionId: order.razorpayPaymentId || '',
         orderId: order.orderId,
         customerId: order.userId || '',
         customerName: `${order.address?.firstName || ''} ${order.address?.lastName || ''}`.trim() || 'Unknown Customer',
         customerEmail: order.userEmail || '',
         amount: order.total || 0,
         currency: 'INR',
-        status: order.paymentStatus || 'pending',
-        paymentMethod: order.paymentMethod || 'razorpay',
-        transactionId: order.razorpayPaymentId || '',
-        razorpayOrderId: order.razorpayOrderId || '',
+        paymentMethod: (order.paymentMethod || 'razorpay') as 'credit_card' | 'paypal' | 'bank_transfer' | 'cash_on_delivery' | 'stripe' | 'razorpay',
+        status: (order.paymentStatus || 'pending') as 'pending' | 'completed' | 'failed' | 'refunded' | 'cancelled',
+        gateway: 'razorpay',
+        gatewayTransactionId: order.razorpayPaymentId || '',
+        fees: 0,
+        tax: 0,
+        description: `Payment for order ${order.orderId}`,
+        metadata: {
+          razorpayOrderId: order.razorpayOrderId || '',
+          orderStatus: order.orderStatus || 'pending',
+          vendorId: order.vendor || '',
+          vendorName: order.vendorName || '',
+          vendorEmail: order.vendorEmail || ''
+        },
         createdAt: order.createdAt || new Date().toISOString(),
-        updatedAt: order.updatedAt || new Date().toISOString(),
-        orderStatus: order.orderStatus || 'pending',
-        vendorId: order.vendor || '',
-        vendorName: order.vendorName || '',
-        vendorEmail: order.vendorEmail || ''
+        updatedAt: order.updatedAt || new Date().toISOString()
       }));
   }, [orders, currentVendor]);
 
-  const filteredPayments = useMemo(() => {
-    if (!allPayments) return [];
-
-    return allPayments.filter(payment => {
-      const matchesSearch = 
-        payment.orderId.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        payment.customerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        payment.customerEmail.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        payment.transactionId.toLowerCase().includes(searchQuery.toLowerCase());
-
-      const matchesStatus = selectedStatus === 'all' || payment.status === selectedStatus;
-      const matchesPaymentMethod = selectedPaymentMethod === 'all' || payment.paymentMethod === selectedPaymentMethod;
-
-      return matchesSearch && matchesStatus && matchesPaymentMethod;
-    });
-  }, [allPayments, searchQuery, selectedStatus, selectedPaymentMethod]);
 
   const analytics: PaymentAnalytics = useMemo(() => {
     if (!allPayments || allPayments.length === 0) {
@@ -113,10 +84,22 @@ export function VendorPaymentsAnalytics() {
         totalTransactions: 0,
         averageTransactionValue: 0,
         successRate: 0,
+        pendingAmount: 0,
+        refundedAmount: 0,
         monthlyRevenue: [],
         paymentMethodBreakdown: [],
         recentTransactions: [],
-        topCustomers: []
+        topCustomers: [],
+        revenueGrowth: {
+          currentMonth: 0,
+          previousMonth: 0,
+          growthPercentage: 0
+        },
+        transactionTrends: {
+          daily: [],
+          weekly: [],
+          monthly: []
+        }
       };
     }
 
@@ -125,58 +108,109 @@ export function VendorPaymentsAnalytics() {
     const averageTransactionValue = totalTransactions > 0 ? totalRevenue / totalTransactions : 0;
     
     const successfulPayments = allPayments.filter(p => p.status === 'completed');
+    const pendingPayments = allPayments.filter(p => p.status === 'pending');
+    const refundedPayments = allPayments.filter(p => p.status === 'refunded' || p.status === 'cancelled');
+    
     const successRate = totalTransactions > 0 ? (successfulPayments.length / totalTransactions) * 100 : 0;
+    const pendingAmount = pendingPayments.reduce((sum, payment) => sum + payment.amount, 0);
+    const refundedAmount = refundedPayments.reduce((sum, payment) => sum + payment.amount, 0);
 
-    // Monthly revenue calculation
-    const monthlyRevenue = allPayments.reduce((acc, payment) => {
+    // Monthly revenue calculation with transactions count
+    const monthlyData = allPayments.reduce((acc, payment) => {
       const date = new Date(payment.createdAt);
       const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-      acc[monthKey] = (acc[monthKey] || 0) + payment.amount;
+      if (!acc[monthKey]) {
+        acc[monthKey] = { revenue: 0, transactions: 0 };
+      }
+      acc[monthKey].revenue += payment.amount;
+      acc[monthKey].transactions += 1;
       return acc;
-    }, {} as Record<string, number>);
+    }, {} as Record<string, { revenue: number; transactions: number }>);
 
-    const monthlyRevenueArray = Object.entries(monthlyRevenue)
-      .map(([month, revenue]) => ({ month, revenue }))
+    const monthlyRevenueArray = Object.entries(monthlyData)
+      .map(([month, data]) => ({ month, revenue: data.revenue, transactions: data.transactions }))
       .sort((a, b) => a.month.localeCompare(b.month))
       .slice(-12); // Last 12 months
 
-    // Payment method breakdown
-    const paymentMethodBreakdown = allPayments.reduce((acc, payment) => {
+    // Payment method breakdown with all required fields
+    const paymentMethodData = allPayments.reduce((acc, payment) => {
       const method = payment.paymentMethod || 'unknown';
-      acc[method] = (acc[method] || 0) + payment.amount;
+      if (!acc[method]) {
+        acc[method] = { count: 0, amount: 0 };
+      }
+      acc[method].count += 1;
+      acc[method].amount += payment.amount;
       return acc;
-    }, {} as Record<string, number>);
+    }, {} as Record<string, { count: number; amount: number }>);
 
-    const paymentMethodArray = Object.entries(paymentMethodBreakdown)
-      .map(([method, amount]) => ({ method, amount }))
+    const paymentMethodArray = Object.entries(paymentMethodData)
+      .map(([method, data]) => ({
+        method,
+        count: data.count,
+        amount: data.amount,
+        percentage: totalRevenue > 0 ? (data.amount / totalRevenue) * 100 : 0
+      }))
       .sort((a, b) => b.amount - a.amount);
 
-    // Top customers
+    // Top customers with correct property names
     const customerSpending = allPayments.reduce((acc, payment) => {
       const customerKey = payment.customerEmail || payment.customerName;
       if (!acc[customerKey]) {
-        acc[customerKey] = { name: payment.customerName, email: payment.customerEmail, totalSpent: 0, transactionCount: 0 };
+        acc[customerKey] = { 
+          customerId: payment.customerId, 
+          customerName: payment.customerName, 
+          totalSpent: 0, 
+          transactionCount: 0 
+        };
       }
       acc[customerKey].totalSpent += payment.amount;
       acc[customerKey].transactionCount += 1;
       return acc;
-    }, {} as Record<string, { name: string; email: string; totalSpent: number; transactionCount: number }>);
+    }, {} as Record<string, { customerId: string; customerName: string; totalSpent: number; transactionCount: number }>);
 
     const topCustomers = Object.values(customerSpending)
       .sort((a, b) => b.totalSpent - a.totalSpent)
       .slice(0, 10);
+
+    // Calculate revenue growth
+    const currentDate = new Date();
+    const currentMonthKey = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}`;
+    const previousMonthKey = `${currentDate.getFullYear()}-${String(currentDate.getMonth()).padStart(2, '0')}`;
+    
+    const currentMonth = monthlyData[currentMonthKey]?.revenue || 0;
+    const previousMonth = monthlyData[previousMonthKey]?.revenue || 0;
+    const growthPercentage = previousMonth > 0 ? ((currentMonth - previousMonth) / previousMonth) * 100 : 0;
+
+    // Transaction trends (simplified implementation)
+    const transactionTrends = {
+      daily: [],
+      weekly: [],
+      monthly: monthlyRevenueArray.map(item => ({
+        month: item.month,
+        count: item.transactions,
+        amount: item.revenue
+      }))
+    };
 
     return {
       totalRevenue,
       totalTransactions,
       averageTransactionValue,
       successRate,
+      pendingAmount,
+      refundedAmount,
       monthlyRevenue: monthlyRevenueArray,
       paymentMethodBreakdown: paymentMethodArray,
       recentTransactions: allPayments
         .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
         .slice(0, 10),
-      topCustomers
+      topCustomers,
+      revenueGrowth: {
+        currentMonth,
+        previousMonth,
+        growthPercentage
+      },
+      transactionTrends
     };
   }, [allPayments]);
 
@@ -372,8 +406,8 @@ export function VendorPaymentsAnalytics() {
                 {analytics.topCustomers.map((customer, index) => (
                   <div key={index} className="flex items-center justify-between p-4 border rounded-lg">
                     <div className="space-y-1">
-                      <p className="font-medium">{customer.name}</p>
-                      <p className="text-sm text-muted-foreground">{customer.email}</p>
+                      <p className="font-medium">{customer.customerName}</p>
+                      <p className="text-sm text-muted-foreground">{customer.customerId}</p>
                       <p className="text-xs text-muted-foreground">{customer.transactionCount} transactions</p>
                     </div>
                     <div className="text-right">

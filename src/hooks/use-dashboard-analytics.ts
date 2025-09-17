@@ -64,7 +64,7 @@ export function useDashboardAnalytics(): {
     );
     
     const totalRevenue = validOrders.reduce((sum, order) => {
-      return sum + (order.total || order.amount || 0);
+      return sum + (order.total || 0);
     }, 0);
 
     const totalOrders = ordersArray.length;
@@ -126,7 +126,7 @@ export function useDashboardAnalytics(): {
         return orderDate >= monthStart && orderDate <= monthEnd;
       });
 
-      const monthRevenue = monthOrders.reduce((sum, order) => sum + (order.total || order.amount || 0), 0);
+      const monthRevenue = monthOrders.reduce((sum, order) => sum + (order.total || 0), 0);
 
       monthlyRevenue.push({
         month: month.toLocaleDateString('en-US', { month: 'long' }),

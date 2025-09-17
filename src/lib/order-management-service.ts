@@ -72,7 +72,6 @@ export class OrderManagementService {
 
       // Stock has already been reduced in the check above
       result.stockReduced = true;
-      console.log(`Stock reduced for ${stockResult.updatedProducts.length} products`);
 
       // Step 4: Create Shiprocket order (always try - service has fallback credentials)
       try {
@@ -94,13 +93,11 @@ export class OrderManagementService {
           };
 
           await updateCustomerOrder(order.userId, order.orderId, orderWithShipping);
-          console.log(`Shiprocket order created: ${shiprocketResponse.order_id}`);
         } else {
           result.warnings.push('Shiprocket order created but response format is unexpected');
         }
       } catch (error) {
         result.warnings.push(`Shiprocket creation failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
-        console.warn('Shiprocket creation failed:', error);
       }
 
       // Step 5: Send confirmation email and vendor notification
@@ -108,7 +105,6 @@ export class OrderManagementService {
         // Send vendor-style email to customer
         try {
           const emailUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3004'}/api/email`;
-          console.log('📧 CUSTOMER EMAIL - Sending vendor-style email to customer:', updatedOrder.userEmail);
           
           const emailResponse = await fetch(emailUrl, {
             method: 'POST',
@@ -125,27 +121,23 @@ export class OrderManagementService {
             })
           });
 
-          console.log('📧 CUSTOMER EMAIL - API response status:', emailResponse.status);
           
           if (!emailResponse.ok) {
             throw new Error(`Email API returned ${emailResponse.status}: ${emailResponse.statusText}`);
           }
 
           const emailResult = await emailResponse.json();
-          console.log('📧 CUSTOMER EMAIL - API result:', emailResult);
           result.emailSent = emailResult.success;
 
           if (emailResult.success) {
-            console.log('✅ CUSTOMER EMAIL - Vendor-style email sent successfully to customer');
+            // Email sent successfully
           } else {
-            console.error('❌ CUSTOMER EMAIL - Email API returned error:', emailResult);
             result.warnings.push(`Customer email failed: ${emailResult.error || 'Unknown error'}`);
             if (emailResult.details) {
               result.warnings.push(`Customer email error details: ${emailResult.details}`);
             }
           }
         } catch (emailError) {
-          console.error('❌ CUSTOMER EMAIL - Email service error:', emailError);
           if (emailError instanceof TypeError && emailError.message.includes('fetch')) {
             result.warnings.push(`Customer email service error: Unable to connect to email API. Please check if the server is running.`);
           } else {
@@ -156,20 +148,16 @@ export class OrderManagementService {
         // Send vendor notification if vendor email exists
         if (updatedOrder.vendorEmail) {
           try {
-            console.log('📧 VENDOR EMAIL - Sending vendor notification to:', updatedOrder.vendorEmail);
             const vendorEmailSent = await EmailService.sendVendorOrderNotification(updatedOrder);
             if (vendorEmailSent) {
-              console.log('✅ VENDOR EMAIL - Vendor notification email sent successfully');
+              // Vendor email sent successfully
             } else {
-              console.error('❌ VENDOR EMAIL - Vendor notification email failed to send');
               result.warnings.push('Vendor notification email failed to send');
             }
           } catch (error) {
-            console.error('❌ VENDOR EMAIL - Vendor email error:', error);
             result.warnings.push(`Vendor email error: ${error instanceof Error ? error.message : 'Unknown error'}`);
           }
         } else {
-          console.log('⚠️ VENDOR EMAIL - No vendor email found - vendor notification not sent');
           result.warnings.push('No vendor email found - vendor notification not sent');
         }
 
@@ -182,7 +170,6 @@ export class OrderManagementService {
             });
 
             if (shippingEmailSent) {
-              console.log('Shipping confirmation email sent successfully');
             } else {
               result.warnings.push('Shipping confirmation email failed to send');
             }
@@ -213,7 +200,12 @@ export class OrderManagementService {
     emailSent: boolean;
     errors: string[];
   }> {
-    const result = {
+    const result: {
+      success: boolean;
+      stockRestored: boolean;
+      emailSent: boolean;
+      errors: string[];
+    } = {
       success: false,
       stockRestored: false,
       emailSent: false,
@@ -250,9 +242,7 @@ export class OrderManagementService {
       if (order.awbCode) {
         try {
           await ShiprocketService.cancelShipment(order.awbCode);
-          console.log(`Shiprocket shipment cancelled: ${order.awbCode}`);
         } catch (error) {
-          console.warn('Shiprocket cancellation failed:', error);
           // Don't fail the entire operation for this
         }
       }
@@ -286,7 +276,12 @@ export class OrderManagementService {
     emailSent: boolean;
     errors: string[];
   }> {
-    const result = {
+    const result: {
+      success: boolean;
+      stockRestored: boolean;
+      emailSent: boolean;
+      errors: string[];
+    } = {
       success: false,
       stockRestored: false,
       emailSent: false,
@@ -351,7 +346,15 @@ export class OrderManagementService {
     }>;
     trackingInfo?: any;
   }> {
-    const result = {
+    const result: {
+      order: Order;
+      stockStatus: Array<{
+        productId: string;
+        currentStock: number;
+        status: string;
+      }>;
+      trackingInfo?: any;
+    } = {
       order,
       stockStatus: [],
       trackingInfo: undefined,
@@ -375,13 +378,11 @@ export class OrderManagementService {
         try {
           result.trackingInfo = await ShiprocketService.getTracking(order.orderId);
         } catch (error) {
-          console.warn('Failed to fetch tracking info:', error);
         }
       }
 
       return result;
     } catch (error) {
-      console.error('Error getting order status:', error);
       return result;
     }
   }

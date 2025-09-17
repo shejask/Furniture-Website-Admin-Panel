@@ -1,14 +1,6 @@
 'use client';
 
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import {
-  Card,
-  CardHeader,
-  CardContent,
-  CardTitle,
-  CardDescription
-} from '@/components/ui/card';
-import { Skeleton } from '@/components/ui/skeleton';
 import { Order } from '@/features/orders/utils/form-schema';
 
 interface VendorRecentSalesProps {

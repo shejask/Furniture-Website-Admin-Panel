@@ -1,6 +1,6 @@
-import { ref, get, set, update } from 'firebase/database';
+import { ref, get, update } from 'firebase/database';
 import { database } from './firebase';
-import { Order, OrderItem } from '@/features/orders/utils/form-schema';
+import { Order } from '@/features/orders/utils/form-schema';
 
 export interface StockUpdateResult {
   success: boolean;
@@ -63,7 +63,7 @@ export class StockService {
 
       return result;
     } catch (error) {
-      console.error('Error checking stock for order:', error);
+      // console.error('Error checking stock for order:', error);
       result.canFulfill = false;
       result.errors.push({
         productId: 'GENERAL',
@@ -126,7 +126,7 @@ export class StockService {
 
       return result;
     } catch (error) {
-      console.error('Error reducing stock for order:', error);
+      // console.error('Error reducing stock for order:', error);
       result.success = false;
       result.errors.push({
         productId: 'GENERAL',
@@ -157,7 +157,7 @@ export class StockService {
         available: currentStock,
       };
     } catch (error) {
-      console.error(`Error checking stock for product ${productId}:`, error);
+      // console.error(`Error checking stock for product ${productId}:`, error);
       return { sufficient: false, available: 0 };
     }
   }
@@ -188,7 +188,12 @@ export class StockService {
       const newStock = currentStock - quantity;
 
       // Update both stockQuantity and stock fields for compatibility
-      const updates = {
+      const updates: {
+        stockQuantity: number;
+        stock: number;
+        updatedAt: string;
+        stockStatus?: string;
+      } = {
         stockQuantity: newStock,
         stock: newStock,
         updatedAt: new Date().toISOString(),
@@ -203,7 +208,7 @@ export class StockService {
 
       return { success: true };
     } catch (error) {
-      console.error(`Error reducing stock for product ${productId}:`, error);
+      // console.error(`Error reducing stock for product ${productId}:`, error);
       return { 
         success: false, 
         error: error instanceof Error ? error.message : 'Unknown error' 
@@ -241,7 +246,7 @@ export class StockService {
 
       return result;
     } catch (error) {
-      console.error('Error restoring stock for order:', error);
+      // console.error('Error restoring stock for order:', error);
       result.success = false;
       result.errors.push({
         productId: 'GENERAL',
@@ -269,7 +274,12 @@ export class StockService {
       const newStock = currentStock + quantity;
 
       // Update both stockQuantity and stock fields for compatibility
-      const updates = {
+      const updates: {
+        stockQuantity: number;
+        stock: number;
+        updatedAt: string;
+        stockStatus?: string;
+      } = {
         stockQuantity: newStock,
         stock: newStock,
         updatedAt: new Date().toISOString(),
@@ -284,7 +294,7 @@ export class StockService {
 
       return { success: true };
     } catch (error) {
-      console.error(`Error restoring stock for product ${productId}:`, error);
+      // console.error(`Error restoring stock for product ${productId}:`, error);
       return { 
         success: false, 
         error: error instanceof Error ? error.message : 'Unknown error' 
@@ -312,7 +322,7 @@ export class StockService {
 
       return { stock, status, exists: true };
     } catch (error) {
-      console.error(`Error getting stock for product ${productId}:`, error);
+      // console.error(`Error getting stock for product ${productId}:`, error);
       return { stock: 0, status: 'error', exists: false };
     }
   }

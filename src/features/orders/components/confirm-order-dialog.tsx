@@ -53,8 +53,8 @@ export function ConfirmOrderDialog({
             Confirm Order
           </DialogTitle>
           <DialogDescription>
-            You are about to confirm order <strong>{order.orderNumber}</strong> for{' '}
-            <strong>{order.customerName}</strong>. This will approve the order for processing.
+            You are about to confirm order <strong>{order.orderId}</strong> for{' '}
+            <strong>{order.address?.firstName} {order.address?.lastName}</strong>. This will approve the order for processing.
           </DialogDescription>
         </DialogHeader>
 
@@ -66,9 +66,9 @@ export function ConfirmOrderDialog({
                 <h4 className="font-medium text-sm">Customer Info</h4>
               </div>
               <div className="text-sm text-muted-foreground space-y-1">
-                <div>{order.customerName}</div>
-                <div>{order.customerEmail}</div>
-                <div>{order.customerPhone}</div>
+                <div>{order.address?.firstName} {order.address?.lastName}</div>
+                <div>{order.userEmail}</div>
+                <div>{order.address?.phone}</div>
               </div>
             </div>
 
@@ -79,8 +79,8 @@ export function ConfirmOrderDialog({
               </div>
               <div className="text-sm text-muted-foreground space-y-1">
                 <div>Subtotal: ₹{order.subtotal.toFixed(2)}</div>
-                <div>Tax: ₹{order.tax.toFixed(2)}</div>
                 <div>Shipping: ₹{order.shipping.toFixed(2)}</div>
+                <div>Discount: -₹{order.discount.toFixed(2)}</div>
                 <div className="font-semibold pt-1 border-t">
                   Total: ₹{order.total.toFixed(2)}
                 </div>
@@ -94,24 +94,24 @@ export function ConfirmOrderDialog({
               <h4 className="font-medium text-sm">Shipping Address</h4>
             </div>
             <div className="text-sm text-muted-foreground">
-              {order.shippingAddress.street}, {order.shippingAddress.city},{' '}
-              {order.shippingAddress.state} {order.shippingAddress.postalCode},{' '}
-              {order.shippingAddress.country}
+              {order.address.streetAddress || order.address.street}, {order.address.city},{' '}
+              {order.address.state} {order.address.zip || order.address.postalCode},{' '}
+              {order.address.country}
             </div>
           </div>
 
           <div className="bg-muted p-3 rounded-md">
             <div className="flex items-center gap-2 mb-2">
               <Package className="h-4 w-4 text-muted-foreground" />
-              <h4 className="font-medium text-sm">Products ({order.products.length})</h4>
+              <h4 className="font-medium text-sm">Products ({order.items.length})</h4>
             </div>
             <div className="text-sm text-muted-foreground space-y-1 max-h-32 overflow-y-auto">
-              {order.products.map((product, index) => (
+              {order.items.map((item, index) => (
                 <div key={index} className="flex justify-between">
                   <span>
-                    {product.productName} x{product.quantity}
+                    {item.name} x{item.quantity}
                   </span>
-                  <span>₹{product.total.toFixed(2)}</span>
+                  <span>₹{(item.total || (item.price * item.quantity)).toFixed(2)}</span>
                 </div>
               ))}
             </div>

@@ -12,22 +12,15 @@ import {
   MapPin, 
   Package, 
   DollarSign,
-  CreditCard,
   History,
   XCircle,
   AlertTriangle,
   Trash2,
-  CheckCircle,
-  ExternalLink,
-  Truck,
-  Clock,
-  Info,
-  Store
+  CheckCircle
 } from 'lucide-react';
 import { Order } from '../utils/form-schema';
 import { getAllOrders, deleteCustomerOrder } from '@/lib/firebase-orders';
 import { OrderManagementService } from '@/lib/order-management-service';
-import { StockService } from '@/lib/stock-service';
 import { getCurrentUser } from '@/lib/auth';
 import Image from 'next/image';
 
@@ -74,7 +67,6 @@ export function VendorOrderDetailsPage({ orderId }: VendorOrderDetailsPageProps)
         setOrder(foundOrder);
       } catch (err) {
         setError('Failed to fetch order details');
-        console.error('Error fetching order:', err);
       } finally {
         setLoading(false);
       }
@@ -98,7 +90,7 @@ export function VendorOrderDetailsPage({ orderId }: VendorOrderDetailsPageProps)
         setOrder(updatedOrder);
       }
     } catch (error) {
-      console.error('Error approving order:', error);
+      setError('Failed to approve order');
     } finally {
       setApprovingOrder(false);
     }
@@ -120,7 +112,7 @@ export function VendorOrderDetailsPage({ orderId }: VendorOrderDetailsPageProps)
         setOrder(updatedOrder);
       }
     } catch (error) {
-      console.error('Error cancelling order:', error);
+      setError('Failed to cancel order');
     } finally {
       setCancellingOrder(false);
     }
@@ -135,7 +127,8 @@ export function VendorOrderDetailsPage({ orderId }: VendorOrderDetailsPageProps)
     
     setRefundingOrder(true);
     try {
-      await OrderManagementService.processRefund(order);
+      // Use cancel order with refund reason since processRefund doesn't exist
+      await OrderManagementService.cancelOrder(order, 'Order refunded by vendor');
       // Refresh the order data
       const orders = await getAllOrders();
       const updatedOrder = orders.find(o => o.orderId === orderId);
@@ -143,7 +136,7 @@ export function VendorOrderDetailsPage({ orderId }: VendorOrderDetailsPageProps)
         setOrder(updatedOrder);
       }
     } catch (error) {
-      console.error('Error processing refund:', error);
+      setError('Failed to process refund');
     } finally {
       setRefundingOrder(false);
     }
@@ -157,10 +150,10 @@ export function VendorOrderDetailsPage({ orderId }: VendorOrderDetailsPageProps)
     }
     
     try {
-      await deleteCustomerOrder(order.orderId);
+      await deleteCustomerOrder(order.userId, order.orderId);
       router.push('/dashboard/my-orders');
     } catch (error) {
-      console.error('Error deleting order:', error);
+      setError('Failed to delete order');
     }
   };
 
@@ -225,7 +218,7 @@ export function VendorOrderDetailsPage({ orderId }: VendorOrderDetailsPageProps)
         <div className="text-center">
           <Package className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
           <h3 className="text-lg font-semibold mb-2">Order Not Found</h3>
-          <p className="text-muted-foreground mb-4">The order you're looking for doesn't exist.</p>
+          <p className="text-muted-foreground mb-4">The order you&apos;re looking for doesn&apos;t exist.</p>
           <Button onClick={() => router.push('/dashboard/my-orders')}>
             <ArrowLeft className="mr-2 h-4 w-4" />
             Back to Orders
@@ -424,11 +417,8 @@ export function VendorOrderDetailsPage({ orderId }: VendorOrderDetailsPageProps)
                     Quantity: {item.quantity} | 
                     Total: ₹{(item.total || (item.price * item.quantity))?.toFixed(2) || '0.00'}
                   </p>
-                  {item.selectedSize && (
-                    <p className="text-xs text-muted-foreground">Size: {item.selectedSize}</p>
-                  )}
-                  {item.selectedColor && (
-                    <p className="text-xs text-muted-foreground">Color: {item.selectedColor}</p>
+                  {item.salePrice && item.salePrice !== item.price && (
+                    <p className="text-xs text-muted-foreground">Sale Price: ₹{item.salePrice.toFixed(2)}</p>
                   )}
                 </div>
               </div>

@@ -15,7 +15,7 @@ export default function VendorEditProductPage() {
   const [mounted, setMounted] = useState(false);
   const [currentVendor, setCurrentVendor] = useState<any>(null);
 
-  const { data: productsData, loading, error } = useFirebaseData('products');
+  const { data: productsData, loading } = useFirebaseData('products');
   const [product, setProduct] = useState<any>(null);
 
   // Get current vendor

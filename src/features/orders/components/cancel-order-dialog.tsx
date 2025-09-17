@@ -65,8 +65,8 @@ export function CancelOrderDialog({
             Cancel Order
           </DialogTitle>
           <DialogDescription>
-            You are about to cancel order <strong>{order.orderNumber}</strong> for{' '}
-            <strong>{order.customerName}</strong>. This action cannot be undone.
+            You are about to cancel order <strong>{order.orderId}</strong> for{' '}
+            <strong>{order.address?.firstName} {order.address?.lastName}</strong>. This action cannot be undone.
           </DialogDescription>
         </DialogHeader>
 
@@ -101,10 +101,11 @@ export function CancelOrderDialog({
           <div className="bg-muted p-3 rounded-md">
             <h4 className="font-medium text-sm mb-2">Order Details:</h4>
             <div className="text-sm text-muted-foreground space-y-1">
-              <div>Order Number: {order.orderNumber}</div>
-              <div>Customer: {order.customerName}</div>
+              <div>Order ID: {order.orderId}</div>
+              <div>Customer: {order.address?.firstName} {order.address?.lastName}</div>
+              <div>Email: {order.userEmail}</div>
               <div>Total: ₹{order.total.toFixed(2)}</div>
-              <div>Status: {order.status}</div>
+              <div>Status: {order.orderStatus}</div>
               <div>Created: {new Date(order.createdAt).toLocaleDateString()}</div>
             </div>
           </div>

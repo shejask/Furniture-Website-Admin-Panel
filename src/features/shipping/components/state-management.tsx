@@ -84,7 +84,7 @@ export function StateManagement({ countryId, countryName }: StateManagementProps
 
       handleCloseStateDialog();
     } catch (error) {
-      console.error('Error saving state:', error);
+      // Error saving state - could show user notification here
     }
   };
 
@@ -96,30 +96,22 @@ export function StateManagement({ countryId, countryName }: StateManagementProps
 
   const handleDeleteState = async (id: string, stateName: string) => {
     try {
-      console.log('Starting deletion process for state:', id, stateName);
-      
       // Delete associated cities first
       const stateCities = Object.values(cities || {}).filter((city: any) => city.stateId === id);
-      console.log('Found cities to delete:', stateCities.length);
       
       for (const city of stateCities) {
         try {
           const cityData = city as any;
-          console.log('Deleting city:', cityData.id, cityData.name);
           await remove(`shipping_cities/${cityData.id}`);
-          console.log('Successfully deleted city:', cityData.name);
         } catch (cityError) {
           const cityData = city as any;
           const error = cityError as Error;
-          console.error('Error deleting city:', cityData.name, cityError);
           alert(`Error deleting city ${cityData.name}: ${error.message || cityError}`);
           return;
         }
       }
       
-      console.log('Deleting state:', id, stateName);
       await remove(`shipping_states/${id}`);
-      console.log('Successfully deleted state:', stateName);
       
       // Clear selection if deleted state was selected
       if (selectedStateId === id) {
@@ -128,7 +120,6 @@ export function StateManagement({ countryId, countryName }: StateManagementProps
       }
     } catch (error) {
       const err = error as Error;
-      console.error('Error deleting state:', error);
       alert(`Error deleting state ${stateName}: ${err.message || error}`);
     }
   };
@@ -173,7 +164,7 @@ export function StateManagement({ countryId, countryName }: StateManagementProps
 
       handleCloseCityDialog();
     } catch (error) {
-      console.error('Error saving city:', error);
+      // Error saving city - could show user notification here
     }
   };
 
@@ -183,11 +174,11 @@ export function StateManagement({ countryId, countryName }: StateManagementProps
     setIsCityDialogOpen(true);
   };
 
-  const handleDeleteCity = async (id: string, cityName: string) => {
+  const handleDeleteCity = async (id: string) => {
     try {
       await remove(`shipping_cities/${id}`);
     } catch (error) {
-      console.error('Error deleting city:', error);
+      // Error deleting city - could show user notification here
     }
   };
 
@@ -202,7 +193,7 @@ export function StateManagement({ countryId, countryName }: StateManagementProps
   };
 
   const getTotalRevenue = (): number => {
-    return selectedStateCities.reduce((total, city: any) => total + (city.defaultPrice || 0), 0);
+    return selectedStateCities.reduce((total: number, city: any) => total + (city.defaultPrice || 0), 0);
   };
 
   const getAveragePrice = (): number => {
@@ -478,7 +469,7 @@ export function StateManagement({ countryId, countryName }: StateManagementProps
                             <Button
                               variant="ghost"
                               size="sm"
-                              onClick={() => handleDeleteCity(city.id, city.name)}
+                              onClick={() => handleDeleteCity(city.id)}
                             >
                               <Trash2 className="h-3 w-3" />
                             </Button>

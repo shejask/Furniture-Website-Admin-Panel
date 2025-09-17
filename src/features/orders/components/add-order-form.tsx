@@ -14,11 +14,10 @@ import {
   Plus,
   Trash2,
   Save,
-  X,
   Loader2
 } from 'lucide-react';
 import { useFirebaseData } from '@/hooks/use-firebase-database';
-import { orderFormSchema, type OrderFormData, type OrderItem } from '../utils/form-schema';
+import { orderFormSchema, type OrderFormData } from '../utils/form-schema';
 import { createCustomerOrder } from '@/lib/firebase-orders';
 import { EmailService } from '@/lib/email-service';
 import { InvoiceGenerator } from '@/lib/invoice-generator';
@@ -58,13 +57,12 @@ interface SelectedItem {
 export function AddOrderForm() {
   const router = useRouter();
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const [openDropdownIndex, setOpenDropdownIndex] = useState<number | null>(null);
   
   // Handle click outside to close dropdown
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setOpenDropdownIndex(null);
+        // Handle dropdown close logic here if needed
       }
     }
     document.addEventListener('mousedown', handleClickOutside);
@@ -73,9 +71,9 @@ export function AddOrderForm() {
 
   const [selectedItems, setSelectedItems] = useState<SelectedItem[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [customShipping, setCustomShipping] = useState<number | null>(null);
+  const [customShipping] = useState<number | null>(null);
   const [couponCode, setCouponCode] = useState<string>('');
-  const [couponDiscount, setCouponDiscount] = useState<number>(0);
+  const [couponDiscount] = useState<number>(0);
 
   const { data: customers } = useFirebaseData('customers');
   const { data: products } = useFirebaseData('products');
@@ -136,7 +134,15 @@ export function AddOrderForm() {
       setValue('discount', 0);
       setValue('total', customShipping !== null ? customShipping : 0);
     }
-    setValue('items', selectedItems);
+    // Map selectedItems to OrderFormData items format
+    const orderItems = selectedItems.map(item => ({
+      id: item.productId,
+      name: item.productName,
+      price: item.price,
+      quantity: item.quantity,
+      total: item.total
+    }));
+    setValue('items', orderItems);
   }, [selectedItems, customShipping, setValue, couponDiscount]);
 
   const handleCustomerSelect = (customerId: string) => {
@@ -238,29 +244,24 @@ export function AddOrderForm() {
     setIsSubmitting(true);
     try {
       // Create order data with all required fields
-      // Fix: Map selectedItems to match OrderFormData schema (productId -> id)
-      const orderData: OrderFormData = {
-        ...data,
-        items: selectedItems.map(item => {
-          console.log('CRITICAL DEBUG - Processing item:', item);
-          console.log('CRITICAL DEBUG - item.productId:', item.productId);
-          console.log('CRITICAL DEBUG - typeof item.productId:', typeof item.productId);
-          
-          if (!item.productId || item.productId === '' || item.productId === 'undefined') {
-            console.error('CRITICAL ERROR: Invalid productId detected!', item);
-            throw new Error(`Invalid product ID: ${item.productId}. Please select a valid product.`);
-          }
-          
-          return {
-            id: item.productId, // Map productId to id
-            name: item.productName,
-            price: item.price,
-            quantity: item.quantity,
-            total: item.total,
-          };
-        }),
-        couponCode: couponCode || undefined,
-      };
+        // Create order data with properly mapped items
+        const orderData: OrderFormData = {
+          ...data,
+          items: selectedItems.map(item => {
+            if (!item.productId || item.productId === '' || item.productId === 'undefined') {
+              throw new Error(`Invalid product ID: ${item.productId}. Please select a valid product.`);
+            }
+            
+            return {
+              id: item.productId, // Map productId to id
+              name: item.productName,
+              price: item.price,
+              quantity: item.quantity,
+              total: item.total,
+            };
+          }),
+          couponCode: couponCode || undefined,
+        };
 
       // Save to Firebase using new structure
       const orderId = await createCustomerOrder(data.userId, orderData);
@@ -268,62 +269,58 @@ export function AddOrderForm() {
       // Try to generate invoice and send emails (optional services)
       try {
         // Generate invoice PDF
-        const invoiceBuffer = await InvoiceGenerator.generateInvoice({
-          orderId,
+        const invoiceBuffer = await InvoiceGenerator.generateInvoicePDF({
+          orderNumber: orderId,
           customerName: customers?.[data.userId]?.fullName || 'Customer',
           customerEmail: data.userEmail,
-          items: selectedItems.map(item => ({
-            name: item.productName,
-            quantity: item.quantity,
+          customerPhone: customers?.[data.userId]?.phone || '',
+          billingAddress: {
+            street: data.address.street || '',
+            city: data.address.city,
+            state: data.address.state,
+            country: data.address.country,
+            postalCode: data.address.postalCode || '',
+          },
+          products: selectedItems.map(item => ({
+            productName: item.productName,
             price: item.price,
+            quantity: item.quantity,
             total: item.total,
           })),
           subtotal: data.subtotal,
+          tax: 0, // Add tax calculation if needed
           shipping: data.shipping,
           discount: data.discount,
           total: data.total,
-          orderDate: new Date().toLocaleDateString(),
+          createdAt: new Date().toLocaleDateString(),
+          paymentMethod: data.paymentMethod,
+          paymentStatus: data.paymentStatus,
         });
+
+        // Create order object for email service
+        const orderForEmail = {
+          ...orderData,
+          id: orderId,
+          orderId: orderId,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
 
         // Send confirmation email to customer
-        await EmailService.sendOrderConfirmation({
-          to: data.userEmail,
-          customerName: customers?.[data.userId]?.fullName || 'Customer',
-          orderId,
-          items: selectedItems,
-          total: data.total,
-          invoiceBuffer,
-        });
-
-        console.log('Order created successfully with email and invoice');
+        await EmailService.sendCustomerOrderConfirmation(orderForEmail, invoiceBuffer);
       } catch (emailError) {
-        console.warn('Order created but email/invoice generation failed:', emailError);
+        // Order created but email/invoice generation failed - this is non-critical
       }
 
       // Redirect to orders list
       router.push('/dashboard/orders');
     } catch (error) {
-      console.error('Error creating order:', error);
       alert('Failed to create order. Please try again.');
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  // Helper function to clean data for Firebase (remove undefined values)
-  const cleanDataForFirebase = (data: any): any => {
-    const cleaned: any = {};
-    Object.keys(data).forEach(key => {
-      if (data[key] !== undefined && data[key] !== null) {
-        if (typeof data[key] === 'object' && !Array.isArray(data[key])) {
-          cleaned[key] = cleanDataForFirebase(data[key]);
-        } else {
-          cleaned[key] = data[key];
-        }
-      }
-    });
-    return cleaned;
-  };
 
   return (
     <div className="space-y-6">

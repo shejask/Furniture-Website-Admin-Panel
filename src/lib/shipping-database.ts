@@ -200,7 +200,7 @@ export const subscribeToAllCountries = (
   const dbRef = ref(database, 'shipping');
   
   const unsubscribe = onValue(dbRef, (snapshot) => {
-    const countries = snapshot.exists() ? Object.values(snapshot.val()) : [];
+    const countries = snapshot.exists() ? Object.values(snapshot.val()) as Country[] : [];
     callback(countries);
   }, errorCallback);
 

@@ -9,7 +9,6 @@ import {
   MapPin, 
   Phone, 
   Mail, 
-  Lock, 
   Building, 
   CreditCard,
   Globe,
@@ -18,29 +17,15 @@ import {
   Twitter,
   Youtube,
   Edit,
-  Shield,
-  Ban
+  Shield
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { useFirebaseData } from '@/hooks/use-firebase-database';
 import { Vendor } from '@/features/vendors/utils/form-schema';
-import { getCurrentUser, setVendorData, User as UserType } from '@/lib/auth';
+import { getCurrentUser, User as UserType } from '@/lib/auth';
 import { VendorForm } from '@/features/vendors/components/vendor-form';
 import Image from 'next/image';
 
-interface VendorProfilePageProps {
-  vendorId?: string;
-  isEditable?: boolean;
-  onEdit?: () => void;
-  onSuspend?: () => void;
-}
-
-export default function VendorProfilePage({ 
-  vendorId, 
-  isEditable = false, 
-  onEdit, 
-  onSuspend 
-}: VendorProfilePageProps) {
+export default function VendorProfilePage() {
   const [vendor, setVendor] = useState<Vendor | null>(null);
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState<UserType | null>(null);
@@ -79,7 +64,6 @@ export default function VendorProfilePage({
         instagram: currentUser.instagram || 'Not provided',
         twitter: currentUser.twitter || 'Not provided',
         youtube: currentUser.youtube || 'Not provided',
-        role: currentUser.role as 'vendor' | 'admin',
         status: currentUser.status as 'active' | 'inactive' | 'suspended',
         createdAt: currentUser.createdAt || new Date().toISOString(),
         updatedAt: currentUser.updatedAt || new Date().toISOString()
@@ -153,7 +137,6 @@ export default function VendorProfilePage({
         instagram: updatedUser.instagram || 'Not provided',
         twitter: updatedUser.twitter || 'Not provided',
         youtube: updatedUser.youtube || 'Not provided',
-        role: updatedUser.role as 'vendor' | 'admin',
         status: updatedUser.status as 'active' | 'inactive' | 'suspended',
         createdAt: updatedUser.createdAt || new Date().toISOString(),
         updatedAt: updatedUser.updatedAt || new Date().toISOString()
@@ -165,7 +148,6 @@ export default function VendorProfilePage({
       // Show success message
       alert('Profile updated successfully!');
     } catch (error) {
-      console.error('Error updating profile:', error);
       alert('Error updating profile. Please try again.');
     } finally {
       setIsSaving(false);
@@ -229,7 +211,6 @@ export default function VendorProfilePage({
       instagram: vendor.instagram || '',
       twitter: vendor.twitter || '',
       youtube: vendor.youtube || '',
-      role: vendor.role || 'vendor',
       status: vendor.status || 'active'
     };
 
@@ -264,11 +245,7 @@ export default function VendorProfilePage({
     );
   }
 
-  const getStatusBadge = (status: string, role: string) => {
-    if (role === 'admin') {
-      return <Badge className="bg-purple-100 text-purple-800">Super Admin</Badge>;
-    }
-    
+  const getStatusBadge = (status: string) => {
     switch (status) {
       case 'active':
         return <Badge className="bg-green-100 text-green-800">Active</Badge>;
@@ -307,9 +284,9 @@ export default function VendorProfilePage({
                     {vendor.storeDescription}
                   </p>
                   <div className="flex items-center gap-2 mt-2">
-                    {getStatusBadge(vendor.status, vendor.role)}
+                    {getStatusBadge(vendor.status)}
                     <span className="text-sm text-muted-foreground">
-                      {vendor.role === 'admin' ? 'Super Admin' : 'Vendor'}
+                      Vendor
                     </span>
                   </div>
                 </div>
@@ -322,17 +299,6 @@ export default function VendorProfilePage({
                   <Edit className="mr-2 h-4 w-4" />
                   Edit Profile
                 </Button>
-                {isEditable && onSuspend && vendor.role !== 'admin' && (
-                  <Button 
-                    onClick={onSuspend} 
-                    variant="destructive"
-                    disabled={vendor.status === 'suspended'}
-                    className="shadow-sm"
-                  >
-                    <Ban className="mr-2 h-4 w-4" />
-                    {vendor.status === 'suspended' ? 'Suspended' : 'Suspend'}
-                  </Button>
-                )}
               </div>
             </div>
           </CardContent>
@@ -373,7 +339,7 @@ export default function VendorProfilePage({
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-muted-foreground">Status</label>
                   <div>
-                    {getStatusBadge(vendor.status, vendor.role)}
+                    {getStatusBadge(vendor.status)}
                   </div>
                 </div>
               </div>
@@ -583,16 +549,12 @@ export default function VendorProfilePage({
               <div className="space-y-2">
                 <label className="text-sm font-medium text-muted-foreground">Role</label>
                 <div className="flex items-center gap-2">
-                  {vendor.role === 'admin' ? (
-                    <Badge className="bg-purple-100 text-purple-800">Super Admin</Badge>
-                  ) : (
-                    <Badge variant="secondary">Vendor</Badge>
-                  )}
+                  <Badge variant="secondary">Vendor</Badge>
                 </div>
               </div>
               <div className="space-y-2">
                 <label className="text-sm font-medium text-muted-foreground">Account Status</label>
-                {getStatusBadge(vendor.status, vendor.role)}
+                {getStatusBadge(vendor.status)}
               </div>
               <div className="space-y-2">
                 <label className="text-sm font-medium text-muted-foreground">Created At</label>

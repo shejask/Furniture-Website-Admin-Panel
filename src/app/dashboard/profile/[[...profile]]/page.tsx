@@ -5,5 +5,5 @@ export const metadata = {
 };
 
 export default async function Page() {
-  return <VendorProfilePage isEditable={true} />;
+  return <VendorProfilePage />;
 }

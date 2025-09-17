@@ -49,8 +49,8 @@ export function TaxesTable() {
       }
       handleCloseDialog();
     } catch (error) {
-      console.error('Error in handleSubmit:', error);
-      alert(`Error ${editingTax ? 'updating' : 'creating'} tax: ${error.message || error}`);
+      const err = error as Error;
+      alert(`Error ${editingTax ? 'updating' : 'creating'} tax: ${err.message || 'Unknown error'}`);
     }
   };
 
@@ -64,7 +64,6 @@ export function TaxesTable() {
       try {
         await remove(`taxes/${id}`);
       } catch (error) {
-        console.error('Error deleting tax:', error);
         alert('Error deleting tax. Please try again.');
       }
     }

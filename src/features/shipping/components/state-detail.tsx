@@ -8,7 +8,6 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
 import { Plus, Edit, Trash2, ArrowLeft, Building2, Map, MapPin, DollarSign } from 'lucide-react';
 import { useFirebaseData, useFirebaseOperations } from '@/hooks/use-firebase-database';
 import type { City, CityFormData } from '@/types/shipping';
@@ -65,7 +64,6 @@ export function StateDetail({ countryId, stateId, countryName, stateName }: Stat
 
       handleCloseCityDialog();
     } catch (error) {
-      console.error('Error saving city:', error);
       alert('Error saving city. Please try again.');
     }
   };
@@ -76,11 +74,11 @@ export function StateDetail({ countryId, stateId, countryName, stateName }: Stat
     setIsCityDialogOpen(true);
   };
 
-  const handleDeleteCity = async (id: string, cityName: string) => {
+  const handleDeleteCity = async (id: string) => {
     try {
       await remove(`shipping_cities/${id}`);
     } catch (error) {
-      console.error('Error deleting city:', error);
+      // Error deleting city - could show user notification here
     }
   };
 
@@ -94,11 +92,11 @@ export function StateDetail({ countryId, stateId, countryName, stateName }: Stat
     return `₹${price}`;
   };
 
-  const getTotalRevenue = () => {
-    return stateCities.reduce((total, city: any) => total + city.defaultPrice, 0);
+  const getTotalRevenue = (): number => {
+    return stateCities.reduce((total: number, city: any) => total + (city.defaultPrice || 0), 0);
   };
 
-  const getAveragePrice = () => {
+  const getAveragePrice = (): number => {
     if (stateCities.length === 0) return 0;
     return getTotalRevenue() / stateCities.length;
   };
@@ -304,7 +302,7 @@ export function StateDetail({ countryId, stateId, countryName, stateName }: Stat
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => handleDeleteCity(city.id, city.name)}
+                          onClick={() => handleDeleteCity(city.id)}
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>

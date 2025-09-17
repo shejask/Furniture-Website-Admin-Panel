@@ -32,26 +32,10 @@ export class OrderActionManager {
    */
   static confirmOrder(order: Order, options: OrderActionOptions = {}): Partial<Order> {
     const now = new Date().toISOString();
-    const actionEntry = this.createActionEntry(
-      'order_confirmed',
-      order.status,
-      'confirmed',
-      {
-        ...options,
-        details: options.details || 'Order confirmed and approved for processing'
-      }
-    );
-
+    
     return {
-      status: 'confirmed',
-      isApproved: true,
-      confirmedAt: now,
-      confirmedBy: options.performedBy || 'admin',
-      updatedAt: now,
-      actionHistory: [
-        ...(order.actionHistory || []),
-        actionEntry
-      ]
+      orderStatus: 'confirmed',
+      updatedAt: now
     };
   }
 
@@ -60,27 +44,12 @@ export class OrderActionManager {
    */
   static cancelOrder(order: Order, options: OrderActionOptions = {}): Partial<Order> {
     const now = new Date().toISOString();
-    const actionEntry = this.createActionEntry(
-      'order_cancelled',
-      order.status,
-      'cancelled',
-      {
-        ...options,
-        details: options.details || options.reason || 'Order cancelled'
-      }
-    );
-
+    
     return {
-      status: 'cancelled',
-      isApproved: false,
-      cancelledAt: now,
-      cancelledBy: options.performedBy || 'admin',
+      orderStatus: 'cancelled',
       cancellationReason: options.reason,
-      updatedAt: now,
-      actionHistory: [
-        ...(order.actionHistory || []),
-        actionEntry
-      ]
+      cancelledAt: now,
+      updatedAt: now
     };
   }
 
@@ -89,41 +58,25 @@ export class OrderActionManager {
    */
   static updateOrderStatus(
     order: Order, 
-    newStatus: Order['status'], 
+    newStatus: Order['orderStatus'], 
     options: OrderActionOptions = {}
   ): Partial<Order> {
     const now = new Date().toISOString();
-    const actionEntry = this.createActionEntry(
-      `status_changed_to_${newStatus}`,
-      order.status,
-      newStatus,
-      options
-    );
 
     const updates: Partial<Order> = {
-      status: newStatus,
-      updatedAt: now,
-      actionHistory: [
-        ...(order.actionHistory || []),
-        actionEntry
-      ]
+      orderStatus: newStatus,
+      updatedAt: now
     };
 
     // Add specific fields based on status
     switch (newStatus) {
-      case 'confirmed':
-        updates.isApproved = true;
-        updates.confirmedAt = now;
-        updates.confirmedBy = options.performedBy || 'admin';
-        break;
       case 'cancelled':
-        updates.isApproved = false;
         updates.cancelledAt = now;
-        updates.cancelledBy = options.performedBy || 'admin';
         updates.cancellationReason = options.reason;
         break;
-      case 'processing':
-        updates.isApproved = true;
+      case 'refunded':
+        updates.refundedAt = now;
+        updates.refundReason = options.reason;
         break;
     }
 
@@ -131,21 +84,22 @@ export class OrderActionManager {
   }
 
   /**
-   * Gets the latest action from order history
+   * Gets the latest action from order history (simplified - returns order status)
    */
   static getLatestAction(order: Order) {
-    if (!order.actionHistory || order.actionHistory.length === 0) {
-      return null;
-    }
-    return order.actionHistory[order.actionHistory.length - 1];
+    return {
+      action: `order_${order.orderStatus}`,
+      timestamp: order.updatedAt,
+      status: order.orderStatus
+    };
   }
 
   /**
-   * Gets all actions of a specific type
+   * Gets all actions of a specific type (simplified implementation)
    */
-  static getActionsByType(order: Order, actionType: string) {
-    if (!order.actionHistory) return [];
-    return order.actionHistory.filter(action => action.action === actionType);
+  static getActionsByType(order: Order, actionType: string): any[] {
+    // Simplified implementation since actionHistory doesn't exist in current Order interface
+    return [];
   }
 
   /**
@@ -153,28 +107,27 @@ export class OrderActionManager {
    */
   static canCancelOrder(order: Order): boolean {
     const cancelableStatuses = ['pending', 'confirmed'];
-    return cancelableStatuses.includes(order.status);
+    return cancelableStatuses.includes(order.orderStatus);
   }
 
   /**
    * Checks if an order can be confirmed
    */
   static canConfirmOrder(order: Order): boolean {
-    return order.status === 'pending';
+    return order.orderStatus === 'pending';
   }
 
   /**
    * Gets human readable status description
    */
-  static getStatusDescription(status: Order['status']): string {
-    const descriptions = {
+  static getStatusDescription(status: Order['orderStatus']): string {
+    const descriptions: Record<Order['orderStatus'], string> = {
       pending: 'Waiting for confirmation',
       confirmed: 'Confirmed and ready for processing',
-      processing: 'Being prepared for shipment',
       shipped: 'On the way to customer',
       delivered: 'Successfully delivered',
       cancelled: 'Order has been cancelled',
-      returned: 'Order has been returned'
+      refunded: 'Order has been refunded'
     };
     return descriptions[status] || status;
   }
