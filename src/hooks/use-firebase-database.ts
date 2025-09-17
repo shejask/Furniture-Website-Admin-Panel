@@ -9,7 +9,9 @@ import {
   deleteData, 
   subscribeToData, 
   queryData,
-  batchUpdate 
+  batchUpdate,
+  generateProductId,
+  setDataWithCustomId
 } from '@/lib/firebase-database';
 
 // Hook for real-time data subscription
@@ -171,6 +173,22 @@ export const useFirebaseOperations = () => {
     }
   }, []);
 
+  const createWithUniqueId = useCallback(async (path: string, data: any, prefix: string = 'PROD') => {
+    try {
+      setLoading(true);
+      setError(null);
+      const uniqueId = generateProductId(prefix);
+      await setDataWithCustomId(path, uniqueId, data);
+      return uniqueId;
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error('Failed to create data with unique ID');
+      setError(error);
+      throw error;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   const update = useCallback(async (path: string, updates: any) => {
     try {
       setLoading(true);
@@ -219,6 +237,7 @@ export const useFirebaseOperations = () => {
   return {
     create,
     createWithKey,
+    createWithUniqueId,
     update,
     remove,
     batch,

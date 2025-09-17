@@ -59,6 +59,32 @@ export const pushData = async (path: string, data: any): Promise<string> => {
   }
 };
 
+// Generate a unique product ID
+export const generateProductId = (prefix: string = 'PROD'): string => {
+  const timestamp = Date.now().toString(36).toUpperCase();
+  const random = Math.random().toString(36).substring(2, 6).toUpperCase();
+  const generatedId = `${prefix}-${timestamp}-${random}`;
+  console.log('Generated product ID:', generatedId);
+  return generatedId;
+};
+
+// Add a new record with custom unique ID
+export const setDataWithCustomId = async (path: string, customId: string, data: any): Promise<string> => {
+  try {
+    const dbRef = ref(database, `${path}/${customId}`);
+    // Remove any existing id field from data and ensure our customId is used
+    const { id: _, ...dataWithoutId } = data;
+    const finalData = { ...dataWithoutId, id: customId };
+    console.log('Saving product with custom ID:', customId, 'Final data ID:', finalData.id);
+    await set(dbRef, finalData);
+    return customId;
+  } catch (error) {
+    // Log error for debugging but don't expose to client
+    console.error('Error in setDataWithCustomId:', error);
+    throw error;
+  }
+};
+
 // Update specific fields
 export const updateData = async (path: string, updates: any): Promise<void> => {
   try {

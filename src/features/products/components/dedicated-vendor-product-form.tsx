@@ -17,6 +17,7 @@ import { useFirebaseStorage } from '@/hooks/use-firebase-storage';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Progress } from '@/components/ui/progress';
 import Image from 'next/image';
+import { getCurrentUser } from '@/lib/auth';
 
 interface SubCategory {
   id: string;
@@ -159,13 +160,16 @@ interface ProductFormProps {
   isVendorForm?: boolean;
 }
 
-export function  ProductForm({ initialData, onSubmit, onCancel, isLoading = false, isVendorForm = false }: ProductFormProps) {
+export function DedicatedVendorProductForm({ initialData }: { initialData?: any }) {
+  const router = useRouter();
+  const currentVendor = getCurrentUser();
+  const [loading, setLoading] = useState(false);
   
   const [formData, setFormData] = useState<ProductFormData>(() => {
     if (initialData) {
       return {
         productType: initialData.productType || 'physical',
-        vendor: initialData.vendor || '',
+        vendor: initialData.vendor || currentVendor?.uniqueId || '',
         name: initialData.name || '',
         slug: initialData.slug || '',
         shortDescription: initialData.shortDescription || '',
@@ -214,7 +218,7 @@ export function  ProductForm({ initialData, onSubmit, onCancel, isLoading = fals
         featured: initialData.featured || false
       };
     }
-    return initialFormData;
+    return { ...initialFormData, vendor: currentVendor?.uniqueId || '' };
   });
   
   // Debug logging for edit mode
@@ -243,10 +247,8 @@ export function  ProductForm({ initialData, onSubmit, onCancel, isLoading = fals
     }
   }, [initialData, formData]);
   
-  const [loading, setLoading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadError, setUploadError] = useState<string | null>(null);
-  const router = useRouter();
   const { createWithUniqueId, update } = useFirebaseOperations();
   const { uploadImageFile, generatePath } = useFirebaseStorage();
   
@@ -525,6 +527,8 @@ export function  ProductForm({ initialData, onSubmit, onCancel, isLoading = fals
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!currentVendor) return;
+    
     setLoading(true);
 
     try {
@@ -585,94 +589,35 @@ export function  ProductForm({ initialData, onSubmit, onCancel, isLoading = fals
       }
 
       if (initialData) {
-        // Update existing product - check if onSubmit callback is provided
-        if (onSubmit) {
-          // Use the provided onSubmit callback (for vendor forms)
-          console.log('Using onSubmit callback for product update');
-          const productWithUpdatedAt = {
-            ...productData,
-            updatedAt: new Date().toISOString()
-          };
-          onSubmit(productWithUpdatedAt);
-        } else {
-          // Use default internal logic (for admin forms)
-          console.log('=== UPDATING EXISTING PRODUCT ===');
-          console.log('Product ID:', initialData.id);
-          console.log('Data being sent to update:', productData);
-          console.log('Variable Options being updated:', productData.variableOptions);
-          
-          // Force ensure all required fields are present for existing products
-          const completeProductData = {
-            ...productData,
-            // CRITICAL: Force these fields to exist with proper values
-            inventoryType: productData.inventoryType || 'simple',
-            variableOptions: Array.isArray(productData.variableOptions) ? productData.variableOptions : [],
-            dimensions: productData.dimensions || '',
-            roomType: productData.roomType || '',
-            warrantyTime: productData.warrantyTime || '',
-            new: Boolean(productData.new),
-            bestSeller: Boolean(productData.bestSeller),
-            onSale: Boolean(productData.onSale),
-            newArrivals: Boolean(productData.newArrivals),
-            trending: Boolean(productData.trending),
-            featured: Boolean(productData.featured),
-            tags: Array.isArray(productData.tags) ? productData.tags : [],
-            categories: Array.isArray(productData.categories) ? productData.categories : [],
-            subCategories: Array.isArray(productData.subCategories) ? productData.subCategories : [],
-            brands: Array.isArray(productData.brands) ? productData.brands : [],
-            metaTitle: productData.metaTitle || '',
-            metaDescription: productData.metaDescription || '',
-            metaImage: productData.metaImage || '',
-            weight: Number(productData.weight) || 0,
-            deadWeight: Number(productData.deadWeight) || 0,
-            estimatedDeliveryText: productData.estimatedDeliveryText || ''
-          };
-          
-          console.log('Complete product data for update:', completeProductData);
-          console.log('Variable Options type:', typeof completeProductData.variableOptions);
-          console.log('Variable Options is Array:', Array.isArray(completeProductData.variableOptions));
-          console.log('Variable Options content:', completeProductData.variableOptions);
-          
-          try {
-            // First, try to update with complete data
-            await update(`products/${initialData.id}`, completeProductData);
-            console.log('Product updated successfully!');
-            
-            // Verify the update by checking if we can read the data back
-            console.log('Update completed. Product should now have all required fields.');
-            
-            router.push(`/dashboard/product/${initialData.id}`);
-          } catch (updateError) {
-            console.error('Update operation failed:', updateError);
-            console.error('Update error details:', {
-              message: updateError instanceof Error ? updateError.message : 'Unknown error',
-              stack: updateError instanceof Error ? updateError.stack : 'No stack trace'
-            });
-            throw updateError;
-          }
-        }
+        // Update existing product (vendor-specific logic)
+        console.log('=== VENDOR PRODUCT UPDATE ===');
+        console.log('Current Vendor:', currentVendor);
+        console.log('Product ID:', initialData.id);
+        
+        const finalProductData = {
+          ...productData,
+          vendor: currentVendor?.uniqueId, // Always set to current vendor
+          updatedAt: new Date().toISOString()
+        };
+        
+        await update(`products/${initialData.id}`, finalProductData);
+        console.log('✅ Vendor product updated successfully!');
+        router.push('/dashboard/vendor-products');
       } else {
-        // Create new product - check if onSubmit callback is provided
-        if (onSubmit) {
-          // Use the provided onSubmit callback (for vendor forms)
-          console.log('Using onSubmit callback for product creation');
-          const productWithCreatedAt = {
-            ...productData,
-            createdAt: new Date().toISOString()
-          };
-          onSubmit(productWithCreatedAt);
-        } else {
-          // Use default internal logic (for admin forms)
-          const productWithCreatedAt = {
-            ...productData,
-            createdAt: new Date().toISOString()
-          };
-          console.log('Product data before saving:', productWithCreatedAt);
-          console.log('Product data ID field:', (productWithCreatedAt as any).id);
-          const uniqueId = await createWithUniqueId('products', productWithCreatedAt);
-          console.log('Product created with unique ID:', uniqueId);
-          router.push('/dashboard/product');
-        }
+        // Create new product (vendor-specific logic)
+        console.log('=== VENDOR PRODUCT CREATION ===');
+        console.log('Current Vendor:', currentVendor);
+        
+        const finalProductData = {
+          ...productData,
+          vendor: currentVendor?.uniqueId, // Always set to current vendor
+          createdAt: new Date().toISOString()
+        };
+        
+        console.log('Creating new vendor product with VPROD prefix...');
+        const uniqueId = await createWithUniqueId('products', finalProductData, 'VPROD');
+        console.log('✅ Vendor product created with unique ID:', uniqueId);
+        router.push('/dashboard/vendor-products');
       }
     } catch (error) {
       // Log error for debugging but don't expose to client
@@ -686,6 +631,16 @@ export function  ProductForm({ initialData, onSubmit, onCancel, isLoading = fals
       setLoading(false);
     }
   };
+
+  if (!currentVendor) {
+    return (
+      <div className="container mx-auto p-6">
+        <div className="text-center py-12">
+          <p className="text-muted-foreground">Please sign in to manage products</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="w-full max-w-none scrollbar-hide overflow-auto">
@@ -719,38 +674,17 @@ export function  ProductForm({ initialData, onSubmit, onCancel, isLoading = fals
                   </Select>
                 </div>
 
-                {isVendorForm ? (
-                  <div className="space-y-3">
-                    <Label htmlFor="vendor">Vendor</Label>
-                    <div className="h-12 px-3 py-2 border border-input bg-muted rounded-md flex items-center">
-                      <span className="text-sm text-muted-foreground">
-                        {vendors && formData.vendor && vendors[formData.vendor] 
-                          ? ((vendors[formData.vendor] as any).storeName || (vendors[formData.vendor] as any).name || formData.vendor)
-                          : 'Current Vendor'
-                        }
-                      </span>
-                    </div>
+                <div className="space-y-3">
+                  <Label htmlFor="vendor">Vendor</Label>
+                  <div className="h-12 px-3 py-2 border border-input bg-muted rounded-md flex items-center">
+                    <span className="text-sm text-muted-foreground">
+                      {vendors && formData.vendor && vendors[formData.vendor] 
+                        ? ((vendors[formData.vendor] as any).storeName || (vendors[formData.vendor] as any).name || formData.vendor)
+                        : 'Current Vendor'
+                      }
+                    </span>
                   </div>
-                ) : (
-                  <div className="space-y-3">
-                    <Label htmlFor="vendor">Vendors</Label>
-                    <Select
-                      value={formData.vendor}
-                      onValueChange={(value) => handleInputChange('vendor', value)}
-                    >
-                      <SelectTrigger className="h-12">
-                        <SelectValue placeholder="Select vendor" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {vendors && Object.entries(vendors).map(([id, vendor]) => (
-                          <SelectItem key={id} value={id}>
-                            {(vendor as any).storeName || (vendor as any).name || id}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
+                </div>
 
                 <div className="space-y-3">
                   <Label htmlFor="name">Name *</Label>
@@ -973,38 +907,18 @@ export function  ProductForm({ initialData, onSubmit, onCancel, isLoading = fals
                 </p>
                 </div>
 
-                              <div className="space-y-3">
+                <div className="space-y-3">
                   <Label htmlFor="commissionAmount">Commission Amount</Label>
-                  {isVendorForm ? (
-                    <div>
-                      <div className="h-12 px-3 py-2 border border-input bg-muted rounded-md flex items-center">
-                        <span className="text-sm text-muted-foreground">
-                          ₹{Number.isFinite(formData.commissionAmount) ? formData.commissionAmount : '0.00'}
-                        </span>
-                      </div>
-                      <p className="text-xs text-amber-600 font-medium mt-1">
-                        💼 Commission will be set by admin after product review
-                      </p>
+                  <div>
+                    <div className="h-12 px-3 py-2 border border-input bg-muted rounded-md flex items-center">
+                      <span className="text-sm text-muted-foreground">
+                        ₹{Number.isFinite(formData.commissionAmount) ? formData.commissionAmount : '0.00'}
+                      </span>
                     </div>
-                  ) : (
-                    <div>
-                      <div className="relative">
-                        <span className="absolute left-4 top-1/2 transform -translate-y-1/2 text-muted-foreground">₹</span>
-                        <Input
-                          id="commissionAmount"
-                          type="number"
-                          step="0.01"
-                          value={Number.isFinite(formData.commissionAmount) ? formData.commissionAmount : ''}
-                          onChange={handleNumberChange('commissionAmount', parseFloat)}
-                          placeholder="0.00"
-                          className="h-12 pl-8 no-spinner"
-                        />
-                      </div>
-                      <p className="text-xs text-muted-foreground">
-                        <strong>Auto-calculation:</strong> Final Sale Price = Sale Price + Commission
-                      </p>
-                    </div>
-                  )}
+                    <p className="text-xs text-amber-600 font-medium mt-1">
+                      💼 Commission will be set by admin after product review
+                    </p>
+                  </div>
                 </div>
               </div>
 

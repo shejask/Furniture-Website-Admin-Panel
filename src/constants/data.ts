@@ -13,6 +13,7 @@ export type Product = {
 
 //Info: The following data is used for the sidebar navigation and Cmd K bar.
 export const navItems: NavItem[] = [
+  // 1. Dashboard (First)
   {
     title: 'Dashboard',
     url: '/dashboard/overview',
@@ -21,6 +22,34 @@ export const navItems: NavItem[] = [
     shortcut: ['d', 'd'],
     items: [] // Empty array as there are no child items for Dashboard
   },
+  {
+    title: 'Vendor Dashboard',
+    url: '/dashboard/vendor-dashboard',
+    icon: 'dashboard',
+    shortcut: ['v', 'd'],
+    isActive: false,
+    items: [] // No child items
+  },
+  
+  // 2. Orders (Second)
+  {
+    title: 'Orders',
+    url: '/dashboard/orders',
+    icon: 'shoppingCart',
+    shortcut: ['o', 'r'],
+    isActive: false,
+    items: [] // No child items
+  },
+  {
+    title: 'My Orders',
+    url: '/dashboard/my-orders',
+    icon: 'shoppingCart',
+    shortcut: ['m', 'o'],
+    isActive: false,
+    items: [] // No child items
+  },
+  
+  // 3. Products (Third)
   {
     title: 'Product Management',
     url: '/dashboard/product',
@@ -60,54 +89,49 @@ export const navItems: NavItem[] = [
       }
     ]
   },
-  
   {
-    title: 'FAQ',
-    url: '/dashboard/faq',
-    icon: 'help',
-    shortcut: ['f', 'f'],
-    isActive: false,
-    items: [] // No child items
-  },
-  {
-    title: 'Coupons',
-    url: '/dashboard/coupons',
-    icon: 'tag',
-    shortcut: ['c', 'c'],
+    title: 'My Products',
+    url: '/dashboard/vendor-products',
+    icon: 'package',
+    shortcut: ['m', 'p'],
     isActive: false,
     items: [] // No child items
   },
   
+  // 4. Payments (Fourth)
+  {
+    title: 'Payments',
+    url: '/dashboard/payments',
+    icon: 'payments',
+    shortcut: ['p', 'y'],
+    isActive: false,
+    items: [] // No child items
+  },
+  {
+    title: 'Vendor Payments',
+    url: '/dashboard/vendor-payments',
+    icon: 'payments',
+    shortcut: ['v', 'p'],
+    isActive: false,
+    items: [] // No child items
+  },
+  
+  // 5. Profile (Fifth)
+  {
+    title: 'Profile',
+    url: '/dashboard/profile',
+    icon: 'user',
+    shortcut: ['p', 'r'],
+    isActive: false,
+    items: [] // No child items
+  },
+  
+  // Other items (after the main 5)
   {
     title: 'Customers',
     url: '/dashboard/customers',
     icon: 'user',
     shortcut: ['c', 'u'],
-    isActive: false,
-    items: [] // No child items
-  },
-
-  {
-    title: 'Media',
-    url: '/dashboard/media',
-    icon: 'media',
-    shortcut: ['m', 'e'],
-    isActive: false,
-    items: [] // No child items
-  },
-  {
-    title: 'Testimonials',
-    url: '/dashboard/testimonials',
-    icon: 'messageSquare',
-    shortcut: ['t', 'e'],
-    isActive: false,
-    items: [] // No child items
-  },
-  {
-    title: 'Blogs',
-    url: '/dashboard/blogs',
-    icon: 'fileText',
-    shortcut: ['b', 'l'],
     isActive: false,
     items: [] // No child items
   },
@@ -136,14 +160,6 @@ export const navItems: NavItem[] = [
     ]
   },
   {
-    title: 'Orders',
-    url: '/dashboard/orders',
-    icon: 'shoppingCart',
-    shortcut: ['o', 'r'],
-    isActive: false,
-    items: [] // No child items
-  },
-  {
     title: 'Reviews',
     url: '/dashboard/reviews',
     icon: 'reviews',
@@ -152,10 +168,34 @@ export const navItems: NavItem[] = [
     items: [] // No child items
   },
   {
-    title: 'Payments',
-    url: '/dashboard/payments',
-    icon: 'payments',
-    shortcut: ['p', 'y'],
+    title: 'Coupons',
+    url: '/dashboard/coupons',
+    icon: 'tag',
+    shortcut: ['c', 'c'],
+    isActive: false,
+    items: [] // No child items
+  },
+  {
+    title: 'Media',
+    url: '/dashboard/media',
+    icon: 'media',
+    shortcut: ['m', 'e'],
+    isActive: false,
+    items: [] // No child items
+  },
+  {
+    title: 'Testimonials',
+    url: '/dashboard/testimonials',
+    icon: 'messageSquare',
+    shortcut: ['t', 'e'],
+    isActive: false,
+    items: [] // No child items
+  },
+  {
+    title: 'Blogs',
+    url: '/dashboard/blogs',
+    icon: 'fileText',
+    shortcut: ['b', 'l'],
     isActive: false,
     items: [] // No child items
   },
@@ -180,6 +220,14 @@ export const navItems: NavItem[] = [
     url: '/dashboard/taxes',
     icon: 'percent',
     shortcut: ['t', 'x'],
+    isActive: false,
+    items: [] // No child items
+  },
+  {
+    title: 'FAQ',
+    url: '/dashboard/faq',
+    icon: 'help',
+    shortcut: ['f', 'f'],
     isActive: false,
     items: [] // No child items
   }

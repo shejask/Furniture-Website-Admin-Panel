@@ -44,8 +44,7 @@ export default function EditProductPage() {
           return {
             id: key,
             key: key,
-            ...(typeof value === 'object' ? value : {})
-          };
+            ...(typeof value === 'object' ? value : {})          };
         });
       }
       

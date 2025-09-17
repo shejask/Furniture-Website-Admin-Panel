@@ -24,12 +24,17 @@ export default function SignInForm() {
     setError('');
 
     try {
-      const result = signIn(email, password);
+      const result = await signIn(email, password);
       
       if (result.success) {
         // Small delay to ensure localStorage is set
         setTimeout(() => {
-          router.push('/dashboard/overview');
+          // Redirect based on user role
+          if (result.user?.role === 'vendor') {
+            router.push('/dashboard/vendor-dashboard');
+          } else {
+            router.push('/dashboard/overview');
+          }
         }, 100);
       } else {
         setError(result.message || 'Sign in failed');
@@ -44,9 +49,9 @@ export default function SignInForm() {
   return (
     <Card className="w-full max-w-md">
       <CardHeader className="space-y-1">
-        <CardTitle className="text-2xl font-bold">Sign In</CardTitle>
+        <CardTitle className="text-2xl font-bold">Vendor Sign In</CardTitle>
         <CardDescription>
-          Enter your credentials to access your account
+          Enter your vendor credentials to access your dashboard
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -62,7 +67,7 @@ export default function SignInForm() {
             <Input
               id="email"
               type="email"
-              placeholder="admin@gmail.com"
+              placeholder="Enter your email address"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
@@ -76,7 +81,7 @@ export default function SignInForm() {
               <Input
                 id="password"
                 type={showPassword ? 'text' : 'password'}
-                placeholder="12345678"
+                placeholder="Enter your password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
@@ -115,11 +120,6 @@ export default function SignInForm() {
           </Button>
         </form>
 
-        <div className="mt-4 text-center text-sm text-muted-foreground">
-          <p>Demo Credentials:</p>
-          <p>Email: admin@gmail.com</p>
-          <p>Password: 12345678</p>
-        </div>
       </CardContent>
     </Card>
   );

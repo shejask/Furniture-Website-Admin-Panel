@@ -5,15 +5,6 @@ import {
   CollapsibleTrigger
 } from '@/components/ui/collapsible';
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger
-} from '@/components/ui/dropdown-menu';
-import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
@@ -33,13 +24,9 @@ import { navItems } from '@/constants/data';
 import { useMediaQuery } from '@/hooks/use-media-query';
 import { getCurrentUser, signOut } from '@/lib/auth';
 import {
-  IconBell,
   IconChevronRight,
-  IconChevronsDown,
-  IconCreditCard,
   IconLogout,
-  IconPhotoUp,
-  IconUserCircle
+  IconPhotoUp
 } from '@tabler/icons-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
@@ -96,127 +83,111 @@ export default function AppSidebar() {
           onTenantSwitch={handleSwitchTenant}
         />
       </SidebarHeader>
-      <SidebarContent className='overflow-x-hidden'>
+      <SidebarContent className='overflow-x-hidden scrollbar-hide'>
         <SidebarGroup>
-          <SidebarGroupLabel>Overview</SidebarGroupLabel>
+          <SidebarGroupLabel>
+            {user?.role === 'vendor' ? 'Vendor Dashboard' : 'Overview'}
+          </SidebarGroupLabel>
           <SidebarMenu>
-            {navItems.map((item) => {
-              const Icon = item.icon ? Icons[item.icon] : Icons.logo;
-              return item?.items && item?.items?.length > 0 ? (
-                <Collapsible
-                  key={item.title}
-                  asChild
-                  defaultOpen={item.isActive}
-                  className='group/collapsible'
-                >
-                  <SidebarMenuItem>
-                    <CollapsibleTrigger asChild>
-                      <SidebarMenuButton
-                        tooltip={item.title}
-                        isActive={pathname === item.url}
-                      >
-                        {item.icon && <Icon />}
-                        <span>{item.title}</span>
-                        <IconChevronRight className='ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90' />
-                      </SidebarMenuButton>
-                    </CollapsibleTrigger>
-                    <CollapsibleContent>
-                      <SidebarMenuSub>
-                        {item.items?.map((subItem) => (
-                          <SidebarMenuSubItem key={subItem.title}>
-                            <SidebarMenuSubButton
-                              asChild
-                              isActive={pathname === subItem.url}
-                            >
-                              <Link href={subItem.url}>
-                                <span>{subItem.title}</span>
-                              </Link>
-                            </SidebarMenuSubButton>
-                          </SidebarMenuSubItem>
-                        ))}
-                      </SidebarMenuSub>
-                    </CollapsibleContent>
-                  </SidebarMenuItem>
-                </Collapsible>
-              ) : (
-                <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton
+            {navItems
+              .filter((item) => {
+                // Filter navigation items based on user role
+                if (user?.role === 'vendor') {
+                  // Show only vendor-specific items
+                  return [
+                    'Vendor Dashboard',
+                    'Vendor Payments', 
+                    'My Orders',
+                    'My Products',
+                    'Profile'
+                  ].includes(item.title);
+                } else {
+                  // Show admin items (exclude vendor-specific items)
+                  return ![
+                    'Vendor Dashboard',
+                    'Vendor Payments',
+                    'My Orders',
+                    'My Products'
+                  ].includes(item.title);
+                }
+              })
+              .map((item) => {
+                const Icon = item.icon ? Icons[item.icon] : Icons.logo;
+                return item?.items && item?.items?.length > 0 ? (
+                  <Collapsible
+                    key={item.title}
                     asChild
-                    tooltip={item.title}
-                    isActive={pathname === item.url}
+                    defaultOpen={item.isActive}
+                    className='group/collapsible'
                   >
-                    <Link href={item.url}>
-                      <Icon />
-                      <span>{item.title}</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              );
-            })}
+                    <SidebarMenuItem>
+                      <CollapsibleTrigger asChild>
+                        <SidebarMenuButton
+                          tooltip={item.title}
+                          isActive={pathname === item.url}
+                        >
+                          {item.icon && <Icon />}
+                          <span>{item.title}</span>
+                          <IconChevronRight className='ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90' />
+                        </SidebarMenuButton>
+                      </CollapsibleTrigger>
+                      <CollapsibleContent>
+                        <SidebarMenuSub>
+                          {item.items?.map((subItem) => (
+                            <SidebarMenuSubItem key={subItem.title}>
+                              <SidebarMenuSubButton
+                                asChild
+                                isActive={pathname === subItem.url}
+                              >
+                                <Link href={subItem.url}>
+                                  <span>{subItem.title}</span>
+                                </Link>
+                              </SidebarMenuSubButton>
+                            </SidebarMenuSubItem>
+                          ))}
+                        </SidebarMenuSub>
+                      </CollapsibleContent>
+                    </SidebarMenuItem>
+                  </Collapsible>
+                ) : (
+                  <SidebarMenuItem key={item.title}>
+                    <SidebarMenuButton
+                      asChild
+                      tooltip={item.title}
+                      isActive={pathname === item.url}
+                    >
+                      <Link href={item.url}>
+                        <Icon />
+                        <span>{item.title}</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                );
+              })}
           </SidebarMenu>
         </SidebarGroup>
       </SidebarContent>
       <SidebarFooter>
         <SidebarMenu>
           <SidebarMenuItem>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <SidebarMenuButton
-                  size='lg'
-                  className='data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground'
-                >
-                  {user && (
-                    <UserAvatarProfile
-                      className='h-8 w-8 rounded-lg'
-                      showInfo
-                      user={user}
-                    />
-                  )}
-                  <IconChevronsDown className='ml-auto size-4' />
-                </SidebarMenuButton>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent
-                className='w-(--radix-dropdown-menu-trigger-width) min-w-56 rounded-lg'
-                side='bottom'
-                align='end'
-                sideOffset={4}
+            <div className="flex items-center justify-between w-full p-2">
+              <div className="flex items-center gap-2 min-w-0 flex-1">
+                {user && (
+                  <UserAvatarProfile
+                    className='h-8 w-8 rounded-lg flex-shrink-0'
+                    showInfo
+                    user={user}
+                  />
+                )}
+              </div>
+              <button
+                onClick={handleSignOut}
+                className="p-2 text-muted-foreground hover:text-red-600 hover:bg-red-50 rounded-md transition-colors flex-shrink-0"
+                title="Sign Out"
               >
-                <DropdownMenuLabel className='p-0 font-normal'>
-                  <div className='px-1 py-1.5'>
-                    {user && (
-                      <UserAvatarProfile
-                        className='h-8 w-8 rounded-lg'
-                        showInfo
-                        user={user}
-                      />
-                    )}
-                  </div>
-                </DropdownMenuLabel>
-                <DropdownMenuSeparator />
-
-                <DropdownMenuGroup>
-                  <DropdownMenuItem
-                    onClick={() => router.push('/dashboard/profile')}
-                  >
-                    <IconUserCircle className='mr-2 h-4 w-4' />
-                    Profile
-                  </DropdownMenuItem>
-                  <DropdownMenuItem>
-                    <IconCreditCard className='mr-2 h-4 w-4' />
-                    Billing
-                  </DropdownMenuItem>
-                  <DropdownMenuItem>
-                    <IconBell className='mr-2 h-4 w-4' />
-                    Notifications
-                  </DropdownMenuItem>
-                </DropdownMenuGroup>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={handleSignOut}>
-                  <IconLogout className='mr-2 h-4 w-4' />
-                  Sign Out
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+                <IconLogout className="h-4 w-4" />
+              </button>
+            </div>
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarFooter>

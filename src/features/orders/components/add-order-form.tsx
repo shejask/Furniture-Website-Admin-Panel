@@ -47,6 +47,14 @@ interface Customer {
   };
 }
 
+interface SelectedItem {
+  productId: string;
+  productName: string;
+  price: number;
+  quantity: number;
+  total: number;
+}
+
 export function AddOrderForm() {
   const router = useRouter();
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -63,7 +71,7 @@ export function AddOrderForm() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const [selectedItems, setSelectedItems] = useState<OrderItem[]>([]);
+  const [selectedItems, setSelectedItems] = useState<SelectedItem[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [customShipping, setCustomShipping] = useState<number | null>(null);
   const [couponCode, setCouponCode] = useState<string>('');
@@ -206,7 +214,8 @@ export function AddOrderForm() {
 
     // Validate that all items have required fields
     const invalidItems = selectedItems.filter(item => 
-      !item.productId || !item.productName || item.price <= 0 || item.quantity <= 0
+      !item.productId || item.productId === '' || item.productId === 'undefined' || 
+      !item.productName || item.price <= 0 || item.quantity <= 0
     );
     
     if (invalidItems.length > 0) {
@@ -229,9 +238,27 @@ export function AddOrderForm() {
     setIsSubmitting(true);
     try {
       // Create order data with all required fields
+      // Fix: Map selectedItems to match OrderFormData schema (productId -> id)
       const orderData: OrderFormData = {
         ...data,
-        items: selectedItems,
+        items: selectedItems.map(item => {
+          console.log('CRITICAL DEBUG - Processing item:', item);
+          console.log('CRITICAL DEBUG - item.productId:', item.productId);
+          console.log('CRITICAL DEBUG - typeof item.productId:', typeof item.productId);
+          
+          if (!item.productId || item.productId === '' || item.productId === 'undefined') {
+            console.error('CRITICAL ERROR: Invalid productId detected!', item);
+            throw new Error(`Invalid product ID: ${item.productId}. Please select a valid product.`);
+          }
+          
+          return {
+            id: item.productId, // Map productId to id
+            name: item.productName,
+            price: item.price,
+            quantity: item.quantity,
+            total: item.total,
+          };
+        }),
         couponCode: couponCode || undefined,
       };
 

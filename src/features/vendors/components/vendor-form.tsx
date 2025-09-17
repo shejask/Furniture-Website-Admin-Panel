@@ -359,7 +359,7 @@ export function VendorForm({
                 id="email"
                 type="email"
                 {...register('email')}
-                placeholder="admin@example.com"
+                placeholder="Enter email address"
               />
               {errors.email && (
                 <p className="text-sm text-red-600">{errors.email.message}</p>
@@ -495,12 +495,12 @@ export function VendorForm({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="password">Password *</Label>
-              <Input
-                id="password"
-                type="password"
-                {...register('password')}
-                placeholder="•••••••••"
-              />
+                <Input
+                  id="password"
+                  type="password"
+                  {...register('password')}
+                  placeholder="Enter password"
+                />
               {errors.password && (
                 <p className="text-sm text-red-600">{errors.password.message}</p>
               )}
@@ -508,12 +508,12 @@ export function VendorForm({
 
             <div className="space-y-2">
               <Label htmlFor="confirmPassword">Confirm Password *</Label>
-              <Input
-                id="confirmPassword"
-                type="password"
-                {...register('confirmPassword')}
-                placeholder="Enter Confirm Password"
-              />
+                <Input
+                  id="confirmPassword"
+                  type="password"
+                  {...register('confirmPassword')}
+                  placeholder="Confirm password"
+                />
               {errors.confirmPassword && (
                 <p className="text-sm text-red-600">{errors.confirmPassword.message}</p>
               )}

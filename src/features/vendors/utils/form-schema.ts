@@ -29,7 +29,7 @@ export const vendorFormSchema = z.object({
   instagram: z.string().optional(),
   twitter: z.string().optional(),
   youtube: z.string().optional(),
-  status: z.enum(['active', 'inactive']).default('active')
+  status: z.enum(['active', 'inactive', 'suspended']).default('active')
 }).refine((data) => data.password === data.confirmPassword, {
   message: "Passwords don't match",
   path: ["confirmPassword"],
@@ -65,7 +65,7 @@ export interface Vendor {
   instagram?: string;
   twitter?: string;
   youtube?: string;
-  status: 'active' | 'inactive';
+  status: 'active' | 'inactive' | 'suspended';
   createdAt: string;
   updatedAt: string;
 } 

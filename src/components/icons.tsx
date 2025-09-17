@@ -39,7 +39,8 @@ import {
   IconMessageCircle,
   IconCurrencyDollar,
   IconTruck,
-  IconPercentage
+  IconPercentage,
+  IconPackage
 } from '@tabler/icons-react';
 
 export type Icon = React.ComponentType<IconProps>;
@@ -90,5 +91,6 @@ export const Icons = {
   payments: IconCreditCard,
   bell: IconBell,
   truck: IconTruck,
-  percent: IconPercentage
+  percent: IconPercentage,
+  package: IconPackage
 };

@@ -1,9 +1,9 @@
-import ProfileViewPage from '@/features/profile/components/profile-view-page';
+import VendorProfilePage from '@/features/profile/components/vendor-profile-page';
 
 export const metadata = {
   title: 'Dashboard : Profile'
 };
 
 export default async function Page() {
-  return <ProfileViewPage />;
+  return <VendorProfilePage isEditable={true} />;
 }

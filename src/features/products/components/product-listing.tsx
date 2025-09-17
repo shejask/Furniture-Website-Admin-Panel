@@ -19,7 +19,7 @@ import {
 type ProductListingPage = {};
 
 // Simple fallback table component
-function SimpleProductTable({ products }: { products: any[] }) {
+function SimpleProductTable({ products, getVendorName, getCategoryName }: { products: any[], getVendorName: (vendorId: string) => string, getCategoryName: (categoryId: string | string[]) => string }) {
   const router = useRouter();
 
   const handleView = (productId: string) => {
@@ -30,7 +30,7 @@ function SimpleProductTable({ products }: { products: any[] }) {
     router.push(`/dashboard/product/${productId}/edit`);
   };
 
-  const { remove, createWithKey } = useFirebaseOperations();
+  const { remove, createWithUniqueId } = useFirebaseOperations();
 
   const handleDelete = async (productId: string) => {
     if (!window.confirm('Are you sure you want to delete this product?')) {
@@ -59,7 +59,7 @@ function SimpleProductTable({ products }: { products: any[] }) {
       delete duplicatedProduct.id;
 
       // Create the duplicated product directly in the database
-      await createWithKey('products', duplicatedProduct);
+      await createWithUniqueId('products', duplicatedProduct, 'PROD');
       
       // Show success message
       alert('Product duplicated successfully!');
@@ -97,10 +97,10 @@ function SimpleProductTable({ products }: { products: any[] }) {
                 />
               </TableCell>
               <TableCell className="font-medium">{product.name}</TableCell>
-              <TableCell>{product.category}</TableCell>
+              <TableCell>{getCategoryName(product.categories || product.category)}</TableCell>
               <TableCell>₹{product.price}</TableCell>
               <TableCell>{product.stock || product.stockQuantity || 0}</TableCell>
-              <TableCell>{product.vendor || 'N/A'}</TableCell>
+              <TableCell>{getVendorName(product.vendor)}</TableCell>
               <TableCell>
                 <span className={`px-2 py-1 rounded-full text-xs ${
                   (product.stock || product.stockQuantity || 0) > 0 
@@ -161,6 +161,8 @@ function SimpleProductTable({ products }: { products: any[] }) {
 
 export default function ProductListingPage() {
   const { data: productsData, loading, error } = useFirebaseData('products');
+  const { data: vendorsData } = useFirebaseData('vendors');
+  const { data: categoriesData } = useFirebaseData('categories');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [mounted, setMounted] = useState(false);
@@ -169,6 +171,30 @@ export default function ProductListingPage() {
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  // Function to get vendor name from vendor ID
+  const getVendorName = (vendorId: string) => {
+    if (!vendorsData || !vendorId) return 'N/A';
+    
+    const vendor = vendorsData[vendorId];
+    if (!vendor) return vendorId; // Fallback to ID if vendor not found
+    
+    return vendor.storeName || vendor.name || vendorId;
+  };
+
+  // Function to get category name from category ID
+  const getCategoryName = (categoryId: string | string[]) => {
+    if (!categoriesData || !categoryId) return 'N/A';
+    
+    // Handle if category is an array (take first category)
+    const id = Array.isArray(categoryId) ? categoryId[0] : categoryId;
+    if (!id) return 'N/A';
+    
+    const category = categoriesData[id];
+    if (!category) return id; // Fallback to ID if category not found
+    
+    return category.name || id;
+  };
 
   // Convert Firebase data to array format with proper IDs
   const products = useMemo(() => {
@@ -351,7 +377,7 @@ export default function ProductListingPage() {
         </div>
       ) : (
         <div className="space-y-4">
-          <SimpleProductTable products={filteredProducts} />
+          <SimpleProductTable products={filteredProducts} getVendorName={getVendorName} getCategoryName={getCategoryName} />
         </div>
       )}
     </div>

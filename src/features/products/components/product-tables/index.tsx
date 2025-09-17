@@ -1,4 +1,4 @@
-'use client';
+ 'use client';
 
 import { DataTable } from '@/components/ui/table/data-table';
 import { DataTableToolbar } from '@/components/ui/table/data-table-toolbar';

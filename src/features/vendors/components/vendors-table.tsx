@@ -7,7 +7,6 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { 
@@ -18,9 +17,6 @@ import {
   Eye, 
   Edit, 
   Trash2, 
-  Copy, 
-  Download, 
-  Share2,
   Store,
   User,
   Mail,
@@ -33,7 +29,7 @@ import {
   Instagram,
   Twitter,
   Youtube,
-  Package
+  Ban
 } from 'lucide-react';
 import Image from 'next/image';
 import { useFirebaseData, useFirebaseOperations } from '@/hooks/use-firebase-database';
@@ -48,7 +44,6 @@ export function VendorsTable() {
   const [searchQuery, setSearchQuery] = useState('');
 
   const { data: vendors, loading } = useFirebaseData('vendors');
-  const { data: products, loading: productsLoading } = useFirebaseData('products');
   const { createWithKey, update, remove } = useFirebaseOperations();
 
   const filteredVendors = useMemo(() => {
@@ -103,6 +98,23 @@ export function VendorsTable() {
         await remove(`vendors/${vendorId}`);
       } catch (error) {
         // Log error for debugging but don't expose to client
+      }
+    }
+  };
+
+  const handleSuspend = async (vendorId: string, currentStatus: string) => {
+    const newStatus = currentStatus === 'suspended' ? 'active' : 'suspended';
+    const action = newStatus === 'suspended' ? 'suspend' : 'unsuspend';
+    
+    if (confirm(`Are you sure you want to ${action} this vendor?`)) {
+      try {
+        await update(`vendors/${vendorId}`, { 
+          status: newStatus,
+          updatedAt: new Date().toISOString()
+        });
+      } catch (error) {
+        // console.error(`Error ${action}ing vendor:`, error);
+        alert(`Failed to ${action} vendor`);
       }
     }
   };
@@ -301,19 +313,13 @@ export function VendorsTable() {
                                   View Details
                                 </DropdownMenuItem>
                                 <DropdownMenuSeparator />
-                                <DropdownMenuItem>
-                                  <Copy className="mr-2 h-4 w-4" />
-                                  Copy ID
+                                <DropdownMenuItem
+                                  onClick={() => handleSuspend(vendor.id, vendor.status)}
+                                  className={vendor.status === 'suspended' ? 'text-green-600' : 'text-orange-600'}
+                                >
+                                  <Ban className="mr-2 h-4 w-4" />
+                                  {vendor.status === 'suspended' ? 'Unsuspend' : 'Suspend'}
                                 </DropdownMenuItem>
-                                <DropdownMenuItem>
-                                  <Download className="mr-2 h-4 w-4" />
-                                  Export Data
-                                </DropdownMenuItem>
-                                <DropdownMenuItem>
-                                  <Share2 className="mr-2 h-4 w-4" />
-                                  Share
-                                </DropdownMenuItem>
-                                <DropdownMenuSeparator />
                                 <DropdownMenuItem
                                   onClick={() => handleDelete(vendor.id)}
                                   className="text-red-600"
