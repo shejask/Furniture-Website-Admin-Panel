@@ -21,6 +21,7 @@ import { useFirebaseData } from '@/hooks/use-firebase-database';
 
 interface CouponFormProps {
   coupon?: Coupon;
+  // These function props are safe in this context as component is only used client-side
   onSubmit: (data: CouponFormData) => Promise<void>;
   onCancel: () => void;
   loading?: boolean;
@@ -37,7 +38,7 @@ export function CouponForm({ coupon, onSubmit, onCancel, loading = false }: Coup
     handleSubmit,
     watch,
     setValue,
-    formState: { errors, isValid },
+    formState: { errors },
     reset
   } = useForm<CouponFormData>({
     resolver: zodResolver(couponFormSchema),
@@ -337,7 +338,7 @@ export function CouponForm({ coupon, onSubmit, onCancel, loading = false }: Coup
                   <Calendar
                     mode="single"
                     selected={watch('validFrom') ? new Date(watch('validFrom')) : undefined}
-                    onSelect={(date) => handleDateChange('validFrom', date)}
+                    onSelect={(date: Date | undefined) => handleDateChange('validFrom', date)}
                     initialFocus
                   />
                 </PopoverContent>
@@ -364,7 +365,7 @@ export function CouponForm({ coupon, onSubmit, onCancel, loading = false }: Coup
                   <Calendar
                     mode="single"
                     selected={watch('validTo') ? new Date(watch('validTo')) : undefined}
-                    onSelect={(date) => handleDateChange('validTo', date)}
+                    onSelect={(date: Date | undefined) => handleDateChange('validTo', date)}
                     initialFocus
                   />
                 </PopoverContent>
@@ -387,7 +388,7 @@ export function CouponForm({ coupon, onSubmit, onCancel, loading = false }: Coup
             <Checkbox
               id="isActive"
               checked={watch('isActive')}
-              onCheckedChange={(checked) => setValue('isActive', checked as boolean)}
+              onCheckedChange={(checked: boolean) => setValue('isActive', checked)}
             />
             <Label htmlFor="isActive">Active</Label>
           </div>

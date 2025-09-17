@@ -1,7 +1,5 @@
-import type { NextConfig } from 'next';
-
 // Define the base Next.js configuration
-const baseConfig: NextConfig = {
+const baseConfig = {
   images: {
     remotePatterns: [
       {
@@ -63,4 +61,4 @@ if (process.env.NEXT_PUBLIC_SENTRY_ORG && process.env.NEXT_PUBLIC_SENTRY_PROJECT
 }
 
 const nextConfig = configWithPlugins;
-export default nextConfig;
+module.exports = nextConfig;
