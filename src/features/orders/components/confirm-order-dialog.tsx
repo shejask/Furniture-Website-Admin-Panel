@@ -81,6 +81,7 @@ export function ConfirmOrderDialog({
                 <div>Subtotal: ₹{order.subtotal.toFixed(2)}</div>
                 <div>Shipping: ₹{order.shipping.toFixed(2)}</div>
                 <div>Discount: -₹{order.discount.toFixed(2)}</div>
+                <div className="text-blue-600">Commission: ₹{(order.totalCommission || order.commission || 0).toFixed(2)}</div>
                 <div className="font-semibold pt-1 border-t">
                   Total: ₹{order.total.toFixed(2)}
                 </div>
@@ -94,9 +95,9 @@ export function ConfirmOrderDialog({
               <h4 className="font-medium text-sm">Shipping Address</h4>
             </div>
             <div className="text-sm text-muted-foreground">
-              {order.address.streetAddress || order.address.street}, {order.address.city},{' '}
-              {order.address.state} {order.address.zip || order.address.postalCode},{' '}
-              {order.address.country}
+              {order.address.streetAddress || order.address.street || 'N/A'}, {order.address.city || 'N/A'},{' '}
+              {order.address.state || 'N/A'} {order.address.zip || order.address.postalCode || 'N/A'},{' '}
+              {order.address.country || 'N/A'}
             </div>
           </div>
 

@@ -17,27 +17,42 @@ export const createCustomerOrder = async (userId: string, orderData: OrderFormDa
     const orderId = `order-${Date.now()}`;
     const now = new Date().toISOString();
     
-    // Create the complete order object
-    const order = {
+    // Create the complete order object (filter out undefined values)
+    const order: any = {
       orderId,
       userId,
       userEmail: orderData.userEmail,
       items: orderData.items,
       address: orderData.address,
       paymentMethod: orderData.paymentMethod,
-      paymentStatus: orderData.paymentStatus,
-      orderStatus: orderData.orderStatus,
+      paymentStatus: orderData.paymentStatus || 'pending', // Default to pending if not provided
+      orderStatus: orderData.orderStatus || 'pending',     // Default to pending if not provided
       subtotal: orderData.subtotal,
       discount: orderData.discount,
       shipping: orderData.shipping,
+      commission: orderData.commission || 0,
+      totalCommission: orderData.totalCommission || orderData.commission || 0,
       total: orderData.total,
-      orderNote: orderData.orderNote,
-      couponCode: orderData.couponCode,
-      razorpayPaymentId: orderData.razorpayPaymentId,
-      razorpayOrderId: orderData.razorpayOrderId,
       createdAt: now,
       updatedAt: now,
     };
+
+    // Only add optional fields if they have values (not undefined)
+    if (orderData.orderNote !== undefined && orderData.orderNote !== null) {
+      order.orderNote = orderData.orderNote;
+    }
+    
+    if (orderData.couponCode !== undefined && orderData.couponCode !== null) {
+      order.couponCode = orderData.couponCode;
+    }
+    
+    if (orderData.razorpayPaymentId !== undefined && orderData.razorpayPaymentId !== null) {
+      order.razorpayPaymentId = orderData.razorpayPaymentId;
+    }
+    
+    if (orderData.razorpayOrderId !== undefined && orderData.razorpayOrderId !== null) {
+      order.razorpayOrderId = orderData.razorpayOrderId;
+    }
 
     // Save to customers/{userId}/orders/{orderId}
     const orderRef = ref(database, `customers/${userId}/orders/${orderId}`);

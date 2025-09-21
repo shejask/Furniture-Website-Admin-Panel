@@ -166,6 +166,24 @@ export class EmailService {
   // Send order notification to vendor
   static async sendVendorOrderNotification(order: Order): Promise<boolean> {
     try {
+      // Determine vendor email - check order level first, then item level
+      let vendorEmail = order.vendorEmail;
+      let vendorName = order.vendorName;
+      
+      if (!vendorEmail || !vendorName) {
+        // Try to get vendor info from first item with vendor details
+        const itemWithVendor = order.items.find(item => item.vendorEmail && item.vendorName);
+        if (itemWithVendor) {
+          vendorEmail = itemWithVendor.vendorEmail;
+          vendorName = itemWithVendor.vendorName;
+        }
+      }
+
+      if (!vendorEmail || !vendorName) {
+        console.warn('No vendor email or name found for order:', order.orderId);
+        return false;
+      }
+
       const response = await fetch('/api/email', {
         method: 'POST',
         headers: {
@@ -174,8 +192,8 @@ export class EmailService {
         body: JSON.stringify({
           type: 'vendor-order-notification',
           data: {
-            vendorName: order.vendorName,
-            vendorEmail: order.vendorEmail,
+            vendorName: vendorName,
+            vendorEmail: vendorEmail,
             orderId: order.orderId,
             orderDate: order.createdAt,
             totalAmount: order.total,

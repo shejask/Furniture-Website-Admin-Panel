@@ -1,4 +1,6 @@
 import { Order } from '@/features/orders/utils/form-schema';
+import { database } from './firebase';
+import { ref, get } from 'firebase/database';
 
 export interface ShiprocketOrderData {
   order_id: string;
@@ -58,6 +60,21 @@ export interface ShiprocketError {
   message: string;
   errors?: Record<string, string[]>;
   status_code?: number;
+}
+
+interface ProductDimensions {
+  length: number;
+  breadth: number;
+  height: number;
+  weight: number;
+  deadWeight: number;
+}
+
+interface OrderDimensions {
+  totalLength: number;
+  totalBreadth: number;
+  totalHeight: number;
+  totalWeight: number;
 }
 
 export class ShiprocketService {
@@ -138,6 +155,133 @@ export class ShiprocketService {
     } catch (error) {
       return new Date().toISOString().slice(0, 19).replace('T', ' ');
     }
+  }
+
+  // Fetch product dimensions from database
+  private static async fetchProductDimensions(productId: string): Promise<ProductDimensions> {
+    try {
+      const productRef = ref(database, `products/${productId}`);
+      const snapshot = await get(productRef);
+      
+      if (snapshot.exists()) {
+        const product = snapshot.val();
+        
+        // Parse dimensions string (format: "H 29 x W 20 x D 21" or "120 x 80 x 75")
+        let length = 10, breadth = 10, height = 10;
+        if (product.dimensions && typeof product.dimensions === 'string') {
+          const dimensionStr = product.dimensions.trim();
+          
+          // Check if it's in "H x x W x x D x" format
+          if (dimensionStr.includes('H ') && dimensionStr.includes('W ') && dimensionStr.includes('D ')) {
+            // Parse format like "H 29 x W 20 x D 21"
+            const heightMatch = dimensionStr.match(/H\s*(\d+(?:\.\d+)?)/i);
+            const widthMatch = dimensionStr.match(/W\s*(\d+(?:\.\d+)?)/i);
+            const depthMatch = dimensionStr.match(/D\s*(\d+(?:\.\d+)?)/i);
+            
+            if (heightMatch) height = Math.max(parseFloat(heightMatch[1]) || 10, 1);
+            if (widthMatch) breadth = Math.max(parseFloat(widthMatch[1]) || 10, 1);
+            if (depthMatch) length = Math.max(parseFloat(depthMatch[1]) || 10, 1);
+            
+            console.log(`✓ Parsed dimensions for product ${productId}:`, {
+              original: dimensionStr,
+              parsed: { height: height + 'cm', width: breadth + 'cm', depth: length + 'cm' }
+            });
+          } else {
+            // Parse simple format like "120 x 80 x 75" or "120x80x75"
+            const dimensionParts = dimensionStr.split(/\s*[x×]\s*/i);
+            if (dimensionParts.length >= 3) {
+              length = Math.max(parseFloat(dimensionParts[0]) || 10, 1);
+              breadth = Math.max(parseFloat(dimensionParts[1]) || 10, 1);
+              height = Math.max(parseFloat(dimensionParts[2]) || 10, 1);
+            }
+          }
+        }
+        
+        // Parse weight (convert grams to kg)
+        const weight = product.weight ? Math.max((parseFloat(product.weight) || 500) / 1000, 0.1) : 0.5;
+        const deadWeight = product.deadWeight ? Math.max(parseFloat(product.deadWeight) || 0.5, 0.1) : weight;
+        
+        return {
+          length,
+          breadth,
+          height,
+          weight,
+          deadWeight
+        };
+      }
+    } catch (error) {
+      console.error(`Error fetching dimensions for product ${productId}:`, error);
+    }
+    
+    // Return default dimensions if product not found or error
+    return {
+      length: 10,
+      breadth: 10,
+      height: 10,
+      weight: 0.5,
+      deadWeight: 0.5
+    };
+  }
+
+  // Calculate combined dimensions for all products in order
+  private static async calculateOrderDimensions(order: Order): Promise<OrderDimensions> {
+    let totalWeight = 0;
+    let totalVolume = 0;
+    const productDimensions: ProductDimensions[] = [];
+
+    // Fetch dimensions for all unique products
+    const uniqueProductIds = Array.from(new Set(order.items.map(item => item.id)));
+    
+    for (const productId of uniqueProductIds) {
+      const dimensions = await this.fetchProductDimensions(productId);
+      productDimensions.push(dimensions);
+      
+      // Find all items with this product ID
+      const itemsWithThisProduct = order.items.filter(item => item.id === productId);
+      const totalQuantity = itemsWithThisProduct.reduce((sum, item) => sum + item.quantity, 0);
+      
+      // Add to total weight (use deadWeight if available, otherwise use weight)
+      const itemWeight = Math.max(dimensions.deadWeight, dimensions.weight);
+      totalWeight += itemWeight * totalQuantity;
+      
+      // Add to total volume
+      const itemVolume = dimensions.length * dimensions.breadth * dimensions.height;
+      totalVolume += itemVolume * totalQuantity;
+    }
+
+    // Calculate combined dimensions
+    // For simplicity, we'll assume a box-like packing
+    // This is a rough approximation - in reality, you'd use more sophisticated packing algorithms
+    const cubicRoot = Math.cbrt(totalVolume);
+    
+    // Ensure minimum dimensions and reasonable proportions
+    const totalLength = Math.max(Math.ceil(cubicRoot * 1.2), 10);
+    const totalBreadth = Math.max(Math.ceil(cubicRoot * 1.0), 10);
+    const totalHeight = Math.max(Math.ceil(cubicRoot * 0.8), 10);
+    
+    // Ensure minimum weight
+    totalWeight = Math.max(totalWeight, 0.1);
+
+    console.log('=== Order Dimensions Calculation ===');
+    console.log('Order ID:', order.orderId);
+    console.log('Total unique products:', uniqueProductIds.length);
+    console.log('Total items:', order.items.reduce((sum, item) => sum + item.quantity, 0));
+    console.log('Product dimensions fetched:', productDimensions.length);
+    console.log('Total volume (cm³):', totalVolume.toFixed(2));
+    console.log('Calculated package dimensions (cm):', { 
+      length: totalLength, 
+      breadth: totalBreadth, 
+      height: totalHeight, 
+      weight: totalWeight + 'kg' 
+    });
+    console.log('====================================');
+
+    return {
+      totalLength,
+      totalBreadth,
+      totalHeight,
+      totalWeight
+    };
   }
 
   // Get authentication token
@@ -265,6 +409,11 @@ export class ShiprocketService {
       const totalDiscount = Number(order.discount || 0);
       const subtotal = Number(order.subtotal || calculatedSubtotal);
 
+      // Calculate actual dimensions based on products in the order
+      // This replaces the previous hardcoded default dimensions with real product dimensions
+      // Dimensions are parsed from database format "H 29 x W 20 x D 21" (cm) and sent to Shiprocket
+      const orderDimensions = await this.calculateOrderDimensions(order);
+
       // Convert our order format to Shiprocket format with guaranteed valid data
       const shiprocketOrder: ShiprocketOrderData = {
         order_id: order.orderId.toString(),
@@ -287,10 +436,10 @@ export class ShiprocketService {
         transaction_charges: 0,
         total_discount: totalDiscount,
         sub_total: subtotal,
-        length: Number(process.env.SHIPROCKET_DEFAULT_LENGTH || 10),
-        breadth: Number(process.env.SHIPROCKET_DEFAULT_BREADTH || 10),
-        height: Number(process.env.SHIPROCKET_DEFAULT_HEIGHT || 10),
-        weight: Number(process.env.SHIPROCKET_DEFAULT_WEIGHT || 0.5),
+        length: orderDimensions.totalLength,
+        breadth: orderDimensions.totalBreadth,
+        height: orderDimensions.totalHeight,
+        weight: orderDimensions.totalWeight,
       };
 
       // Debug: Log the Shiprocket payload

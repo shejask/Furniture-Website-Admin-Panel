@@ -50,7 +50,7 @@ export function BarGraph() {
       const dayOrders = orders.filter((order: any) => {
         if (!order.createdAt) return false;
         const orderDate = new Date(order.createdAt).toISOString().split('T')[0];
-        return orderDate === date;
+        return orderDate === date && order.orderStatus === 'confirmed';
       });
 
       const dailyRevenue = dayOrders.reduce((sum: number, order: any) => {

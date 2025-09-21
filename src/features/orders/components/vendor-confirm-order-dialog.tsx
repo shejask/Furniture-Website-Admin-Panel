@@ -81,8 +81,12 @@ export function VendorConfirmOrderDialog({
                 <div>Subtotal: ₹{order.subtotal?.toFixed(2) || '0.00'}</div>
                 <div>Discount: ₹{order.discount?.toFixed(2) || '0.00'}</div>
                 <div>Shipping: ₹{order.shipping?.toFixed(2) || '0.00'}</div>
+                <div className="text-blue-600">Commission: ₹{(order.totalCommission || order.commission || 0).toFixed(2)}</div>
                 <div className="font-semibold pt-1 border-t">
                   Total: ₹{order.total?.toFixed(2) || '0.00'}
+                </div>
+                <div className="text-green-600 font-medium mt-2 pt-2 border-t border-green-200">
+                  You will earn: ₹{((order.total || 0) - (order.shipping || 0) - (order.totalCommission || order.commission || 0)).toFixed(2)}
                 </div>
               </div>
             </div>
@@ -94,9 +98,9 @@ export function VendorConfirmOrderDialog({
               <h4 className="font-medium text-sm">Shipping Address</h4>
             </div>
             <div className="text-sm text-muted-foreground">
-              {order.address?.streetAddress}, {order.address?.city},{' '}
-              {order.address?.state} {order.address?.zip},{' '}
-              {order.address?.country}
+              {order.address?.streetAddress || order.address?.street || 'N/A'}, {order.address?.city || 'N/A'},{' '}
+              {order.address?.state || 'N/A'} {order.address?.zip || order.address?.postalCode || 'N/A'},{' '}
+              {order.address?.country || 'N/A'}
             </div>
           </div>
 

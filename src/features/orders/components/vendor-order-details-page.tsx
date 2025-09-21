@@ -246,15 +246,25 @@ export function VendorOrderDetailsPage({ orderId }: VendorOrderDetailsPageProps)
             <p className="text-muted-foreground">Order ID: {order.orderId}</p>
           </div>
         </div>
-        <div className="flex items-center space-x-2">
-          {getStatusBadge(order.orderStatus)}
-          {getPaymentStatusBadge(order.paymentStatus)}
+        <div className="flex items-center space-x-6">
+          <div className="text-right">
+            <span className="text-xs text-muted-foreground">Order Status</span>
+            <div className="mt-1">
+              {getStatusBadge(order.orderStatus)}
+            </div>
+          </div>
+          <div className="text-right">
+            <span className="text-xs text-muted-foreground">Payment Status</span>
+            <div className="mt-1">
+              {getPaymentStatusBadge(order.paymentStatus)}
+            </div>
+          </div>
         </div>
       </div>
 
       {/* Action Buttons */}
       <div className="flex items-center space-x-2">
-        {order.orderStatus === 'pending' && (
+        {/* {order.orderStatus === 'pending' && (
           <Button
             onClick={handleApproveOrder}
             disabled={approvingOrder}
@@ -264,7 +274,9 @@ export function VendorOrderDetailsPage({ orderId }: VendorOrderDetailsPageProps)
             {approvingOrder ? 'Approving...' : 'Approve Order'}
           </Button>
         )}
-        
+         */}
+
+         
         {(order.orderStatus === 'pending' || order.orderStatus === 'confirmed' || order.orderStatus === 'shipped' || order.orderStatus === 'delivered') && (
           <Button
             onClick={handleCancelOrder}
@@ -356,9 +368,17 @@ export function VendorOrderDetailsPage({ orderId }: VendorOrderDetailsPageProps)
               <span className="text-sm text-muted-foreground">Shipping:</span>
               <span className="text-sm">₹{order.shipping?.toFixed(2) || '0.00'}</span>
             </div>
+            <div className="flex justify-between text-blue-600">
+              <span className="text-sm text-muted-foreground">Commission:</span>
+              <span className="text-sm">₹{(order.totalCommission || order.commission || 0).toFixed(2)}</span>
+            </div>
             <div className="flex justify-between font-semibold pt-2 border-t">
               <span>Total:</span>
               <span>₹{order.total?.toFixed(2) || '0.00'}</span>
+            </div>
+            <div className="flex justify-between text-green-600 font-medium mt-2 pt-2 border-t border-green-200 bg-green-50 px-3 py-2 rounded">
+              <span>You will earn:</span>
+              <span>₹{((order.total || 0) - (order.shipping || 0) - (order.totalCommission || order.commission || 0)).toFixed(2)}</span>
             </div>
           </CardContent>
         </Card>
@@ -373,13 +393,35 @@ export function VendorOrderDetailsPage({ orderId }: VendorOrderDetailsPageProps)
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="text-sm space-y-1">
-            <div>{order.address?.firstName} {order.address?.lastName}</div>
-            <div>{order.address?.streetAddress}</div>
-            <div>{order.address?.city}, {order.address?.state} {order.address?.zip}</div>
-            <div>{order.address?.country}</div>
-            <div>Phone: {order.address?.phone}</div>
-          </div>
+          {order.address ? (
+            <div className="text-sm space-y-2">
+              <div className="font-medium">
+                {order.address.firstName && order.address.lastName 
+                  ? `${order.address.firstName} ${order.address.lastName}`
+                  : order.address.addressName || 'N/A'
+                }
+              </div>
+              {order.address.phone && (
+                <div className="text-muted-foreground">
+                  Phone: {order.address.phone}
+                </div>
+              )}
+              <div>
+                {order.address.streetAddress || order.address.street || 'N/A'}
+              </div>
+              <div>
+                {order.address.city || 'N/A'}, {order.address.state || 'N/A'}
+              </div>
+              <div>
+                {order.address.zip || order.address.postalCode || 'N/A'}
+              </div>
+              <div>{order.address.country || 'N/A'}</div>
+            </div>
+          ) : (
+            <div className="text-sm text-muted-foreground">
+              No address information available
+            </div>
+          )}
         </CardContent>
       </Card>
 

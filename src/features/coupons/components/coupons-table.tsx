@@ -8,8 +8,9 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Plus, Edit, Trash2, Calendar, Tag, Search, Filter, CheckCircle } from 'lucide-react';
+import { Plus, Edit, Trash2, Calendar, Tag, Search, Filter, CheckCircle, Clock } from 'lucide-react';
 import { useFirebaseData, useFirebaseOperations } from '@/hooks/use-firebase-database';
+import { useOrders } from '@/hooks/use-orders';
 import { format } from 'date-fns';
 import type { Coupon, CouponFormData, DiscountType } from '@/types/coupon';
 import { CouponForm } from './coupon-form';
@@ -34,6 +35,7 @@ export function CouponsTable() {
 
   const { data: coupons, loading } = useFirebaseData('coupons');
   const { createWithKey, update, remove, loading: operationLoading } = useFirebaseOperations();
+  const { orders } = useOrders();
 
   const handleSubmit = async (data: CouponFormData) => {
     try {
@@ -74,6 +76,9 @@ export function CouponsTable() {
 
   // Calculate statistics
   const stats = coupons ? calculateCouponStats(coupons) : null;
+  
+  // Calculate pending orders count
+  const pendingOrdersCount = orders ? orders.filter(order => order.orderStatus === 'pending').length : 0;
 
   // Filter and sort coupons
   const filteredCoupons = coupons ? filterCoupons(coupons, {
@@ -88,7 +93,7 @@ export function CouponsTable() {
     <div className="space-y-6">
       {/* Statistics Cards */}
       {stats && (
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <Card>
             <CardContent className="p-4">
               <div className="flex items-center space-x-2">
@@ -114,10 +119,10 @@ export function CouponsTable() {
           <Card>
             <CardContent className="p-4">
               <div className="flex items-center space-x-2">
-                <Calendar className="h-4 w-4 text-red-600" />
+                <Clock className="h-4 w-4 text-orange-600" />
                 <div>
-                  <p className="text-sm font-medium">Expired Coupons</p>
-                  <p className="text-2xl font-bold">{stats.expiredCoupons}</p>
+                  <p className="text-sm font-medium">New Orders</p>
+                  <p className="text-2xl font-bold">{pendingOrdersCount}</p>
                 </div>
               </div>
             </CardContent>

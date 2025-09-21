@@ -18,25 +18,17 @@ import {
   ShoppingCart,
   User,
   DollarSign,
-  CheckCircle,
-  XCircle
 } from 'lucide-react';
 import { useOrders } from '@/hooks/use-orders';
 import { deleteCustomerOrder } from '@/lib/firebase-orders';
-import { VendorCancelOrderDialog } from './vendor-cancel-order-dialog';
-import { VendorConfirmOrderDialog } from './vendor-confirm-order-dialog';
 import { type Order, type OrderSummary } from '../utils/form-schema';
-import { OrderActionManager, type OrderActionOptions } from '../utils/order-actions';
 import { getCurrentUser } from '@/lib/auth';
-import { OrderManagementService } from '@/lib/order-management-service';
 
 export function VendorOrdersTable() {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
   const [selectedPaymentStatus, setSelectedPaymentStatus] = useState<string>('all');
-  const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
-  const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
   const [currentVendor, setCurrentVendor] = useState<any>(null);
 
   const { orders: allOrders, loading, refetch } = useOrders();
@@ -94,7 +86,7 @@ export function VendorOrdersTable() {
       cancelledOrders: 0 
     };
 
-    const totalOrders = orders.length;
+    const totalOrders = orders.filter(order => order.orderStatus === 'confirmed').length;
     const pendingOrders = orders.filter(order => order.orderStatus === 'pending').length;
     const completedOrders = orders.filter(order => order.orderStatus === 'delivered').length;
     const cancelledOrders = orders.filter(order => order.orderStatus === 'cancelled').length;
@@ -103,7 +95,12 @@ export function VendorOrdersTable() {
       order.orderStatus === 'confirmed' || order.orderStatus === 'delivered'
     );
 
-    const totalRevenue = validOrders.reduce((sum, order) => sum + (order.total || 0), 0);
+    const totalRevenue = validOrders.reduce((sum, order) => {
+      const orderTotal = order.total || 0;
+      const shipping = order.shipping || 0;
+      const commission = order.totalCommission || order.commission || 0;
+      return sum + (orderTotal - shipping - commission); // Vendor revenue = total - shipping - commission
+    }, 0);
     const averageOrderValue = validOrders.length > 0 ? totalRevenue / validOrders.length : 0;
 
     // Find top customer
@@ -117,7 +114,10 @@ export function VendorOrdersTable() {
         acc[customerKey] = { customerId: order.userId, customerName, orderCount: 0, totalSpent: 0 };
       }
       acc[customerKey].orderCount += 1;
-      acc[customerKey].totalSpent += (order.total || 0);
+      const orderTotal = order.total || 0;
+      const shipping = order.shipping || 0;
+      const commission = order.totalCommission || order.commission || 0;
+      acc[customerKey].totalSpent += (orderTotal - shipping - commission); // Customer value to vendor after shipping and commission
       return acc;
     }, {} as Record<string, { customerId: string; customerName: string; orderCount: number; totalSpent: number }>);
 
@@ -154,35 +154,6 @@ export function VendorOrdersTable() {
     }
   };
 
-  const handleApproveOrder = async (order: Order) => {
-    try {
-      await OrderManagementService.confirmOrder(order);
-      refetch();
-    } catch (error) {
-      // console.error('Error approving order:', error);
-    }
-  };
-
-  const handleCancelOrder = async (order: Order, reason: string) => {
-    try {
-      await OrderManagementService.cancelOrder(order, reason);
-      refetch();
-    } catch (error) {
-      // console.error('Error cancelling order:', error);
-    }
-  };
-
-  const handleRefundOrder = async (order: Order) => {
-    try {
-      // For now, just update the order status to refunded
-      // This can be extended later with actual refund processing
-      const reason = 'Refund requested by vendor';
-      await OrderManagementService.cancelOrder(order, reason);
-      refetch();
-    } catch (error) {
-      // console.error('Error processing refund:', error);
-    }
-  };
 
 
   const getStatusBadge = (status: string) => {
@@ -249,20 +220,26 @@ export function VendorOrdersTable() {
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
+            <CardTitle className="text-sm font-medium">Total Earnings</CardTitle>
             <DollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">₹{orderSummary.totalRevenue.toLocaleString()}</div>
+            <p className="text-xs text-muted-foreground">
+              After commission deduction
+            </p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Average Order Value</CardTitle>
+            <CardTitle className="text-sm font-medium">Avg. Earnings per Order</CardTitle>
             <User className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">₹{orderSummary.averageOrderValue.toLocaleString()}</div>
+            <p className="text-xs text-muted-foreground">
+              After commission deduction
+            </p>
           </CardContent>
         </Card>
         <Card>
@@ -390,25 +367,6 @@ export function VendorOrdersTable() {
                               <Eye className="mr-2 h-4 w-4" />
                               View Details
                             </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            {order.orderStatus === 'pending' && (
-                              <DropdownMenuItem onClick={() => handleApproveOrder(order)}>
-                                <CheckCircle className="mr-2 h-4 w-4" />
-                                Approve Order
-                              </DropdownMenuItem>
-                            )}
-                            {(order.orderStatus === 'pending' || order.orderStatus === 'confirmed' || order.orderStatus === 'shipped' || order.orderStatus === 'delivered') && (
-                              <DropdownMenuItem onClick={() => handleCancelOrder(order, 'Order cancelled by admin')}>
-                                <XCircle className="mr-2 h-4 w-4" />
-                                Cancel Order
-                              </DropdownMenuItem>
-                            )}
-                            {(order.orderStatus === 'pending' || order.orderStatus === 'confirmed' || order.orderStatus === 'shipped' || order.orderStatus === 'delivered') && (
-                              <DropdownMenuItem onClick={() => handleRefundOrder(order)}>
-                                <XCircle className="mr-2 h-4 w-4" />
-                                Refund
-                              </DropdownMenuItem>
-                            )}
                             <DropdownMenuSeparator />
                             <DropdownMenuItem 
                               onClick={() => handleDeleteOrder(order)}

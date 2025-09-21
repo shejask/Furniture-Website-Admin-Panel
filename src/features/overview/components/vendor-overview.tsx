@@ -58,8 +58,19 @@ export default function VendorOverViewPage() {
       order.orderStatus === 'confirmed'
     );
 
-    const totalRevenue = validOrders.reduce((sum, order) => sum + (order.total || 0), 0);
-    const totalOrders = vendorOrders.length;
+    const totalRevenue = validOrders.reduce((sum, order) => {
+      const orderTotal = order.total || 0;
+      const shipping = order.shipping || 0;
+      const commission = order.totalCommission || order.commission || 0;
+      return sum + (orderTotal - shipping - commission); // Vendor earnings = total - shipping - commission
+    }, 0);
+    
+    // Calculate total commission deducted
+    const totalCommission = validOrders.reduce((sum, order) => {
+      const commission = order.totalCommission || order.commission || 0;
+      return sum + commission;
+    }, 0);
+    const totalOrders = vendorOrders.filter(order => order.orderStatus === 'confirmed').length;
     const averageOrderValue = validOrders.length > 0 ? totalRevenue / validOrders.length : 0;
 
     // Calculate monthly revenue
@@ -69,7 +80,12 @@ export default function VendorOverViewPage() {
       const orderDate = new Date(order.createdAt || Date.now());
       return orderDate.getMonth() === currentMonth && orderDate.getFullYear() === currentYear;
     });
-    const currentMonthRevenue = currentMonthOrders.reduce((sum, order) => sum + (order.total || 0), 0);
+    const currentMonthRevenue = currentMonthOrders.reduce((sum, order) => {
+      const orderTotal = order.total || 0;
+      const shipping = order.shipping || 0;
+      const commission = order.totalCommission || order.commission || 0;
+      return sum + (orderTotal - shipping - commission); // Current month vendor earnings
+    }, 0);
 
     // Calculate previous month revenue
     const previousMonth = currentMonth === 0 ? 11 : currentMonth - 1;
@@ -78,7 +94,12 @@ export default function VendorOverViewPage() {
       const orderDate = new Date(order.createdAt || Date.now());
       return orderDate.getMonth() === previousMonth && orderDate.getFullYear() === previousYear;
     });
-    const previousMonthRevenue = previousMonthOrders.reduce((sum, order) => sum + (order.total || 0), 0);
+    const previousMonthRevenue = previousMonthOrders.reduce((sum, order) => {
+      const orderTotal = order.total || 0;
+      const shipping = order.shipping || 0;
+      const commission = order.totalCommission || order.commission || 0;
+      return sum + (orderTotal - shipping - commission); // Previous month vendor earnings
+    }, 0);
 
     // Calculate growth percentage
     const growthPercentage = previousMonthRevenue > 0 
@@ -106,6 +127,7 @@ export default function VendorOverViewPage() {
 
     setVendorAnalytics({
       totalRevenue,
+      totalCommission,
       totalOrders,
       averageOrderValue,
       currentMonthRevenue,
@@ -158,7 +180,7 @@ export default function VendorOverViewPage() {
               <Card>
                 <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
                   <CardTitle className='text-sm font-medium'>
-                    Total Revenue
+                    Total Earnings
                   </CardTitle>
                   <DollarSign className='h-4 w-4 text-muted-foreground' />
                 </CardHeader>
@@ -167,7 +189,7 @@ export default function VendorOverViewPage() {
                     {vendorAnalytics ? formatCurrency(vendorAnalytics.totalRevenue) : '₹0.00'}
                   </div>
                   <p className='text-xs text-muted-foreground'>
-                    +{vendorAnalytics?.growthPercentage?.toFixed(1) || 0}% from last month
+                    Commission - {vendorAnalytics ? formatCurrency(vendorAnalytics.totalCommission) : '₹0.00'} • +{vendorAnalytics?.growthPercentage?.toFixed(1) || 0}% from last month
                   </p>
                 </CardContent>
               </Card>
@@ -190,7 +212,7 @@ export default function VendorOverViewPage() {
               <Card>
                 <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
                   <CardTitle className='text-sm font-medium'>
-                    Average Order Value
+                    Avg. Earnings per Order
                   </CardTitle>
                   <CreditCard className='h-4 w-4 text-muted-foreground' />
                 </CardHeader>
@@ -199,14 +221,14 @@ export default function VendorOverViewPage() {
                     {vendorAnalytics ? formatCurrency(vendorAnalytics.averageOrderValue) : '₹0.00'}
                   </div>
                   <p className='text-xs text-muted-foreground'>
-                    Per order average
+                    After commission deduction
                   </p>
                 </CardContent>
               </Card>
               <Card>
                 <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
                   <CardTitle className='text-sm font-medium'>
-                    This Month
+                    This Month Earnings
                   </CardTitle>
                   <TrendingUp className='h-4 w-4 text-muted-foreground' />
                 </CardHeader>
@@ -215,7 +237,7 @@ export default function VendorOverViewPage() {
                     {vendorAnalytics ? formatCurrency(vendorAnalytics.currentMonthRevenue) : '₹0.00'}
                   </div>
                   <p className='text-xs text-muted-foreground'>
-                    Current month revenue
+                    After commission deduction
                   </p>
                 </CardContent>
               </Card>

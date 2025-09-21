@@ -58,16 +58,16 @@ export function useDashboardAnalytics(): {
       ...(customer as any)
     }));
 
-    // Calculate analytics - exclude cancelled and refunded orders
-    const validOrders = ordersArray.filter(order => 
-      order.orderStatus !== 'cancelled' && order.orderStatus !== 'refunded'
+    // Calculate analytics - only include confirmed orders
+    const confirmedOrders = ordersArray.filter(order => 
+      order.orderStatus === 'confirmed'
     );
     
-    const totalRevenue = validOrders.reduce((sum, order) => {
+    const totalRevenue = confirmedOrders.reduce((sum, order) => {
       return sum + (order.total || 0);
     }, 0);
 
-    const totalOrders = ordersArray.length;
+    const totalOrders = ordersArray.filter(order => order.orderStatus === 'confirmed').length;
     const totalProducts = productsArray.length;
     const totalCustomers = customersArray.length;
 
@@ -77,9 +77,9 @@ export function useDashboardAnalytics(): {
     const productsGrowth = 5.1;
     const customersGrowth = 15.3;
 
-    // Top products by revenue - use valid orders only
+    // Top products by revenue - use confirmed orders only
     const productRevenue = new Map();
-    validOrders.forEach(order => {
+    confirmedOrders.forEach(order => {
       if (order.items) {
         order.items.forEach((item: any) => {
           const revenue = productRevenue.get(item.productId) || 0;
@@ -121,7 +121,7 @@ export function useDashboardAnalytics(): {
       const monthStart = new Date(month.getFullYear(), month.getMonth(), 1);
       const monthEnd = new Date(month.getFullYear(), month.getMonth() + 1, 0);
       
-      const monthOrders = validOrders.filter(order => {
+      const monthOrders = confirmedOrders.filter(order => {
         const orderDate = new Date(order.createdAt || 0);
         return orderDate >= monthStart && orderDate <= monthEnd;
       });

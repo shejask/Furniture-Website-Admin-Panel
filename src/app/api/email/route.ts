@@ -1,30 +1,73 @@
 import { NextResponse } from 'next/server';
 import nodemailer from 'nodemailer';
 
-// WORKING Hostinger SMTP configuration - EXACTLY like the test email
+// SMTP configuration using environment variables
 const transporter = nodemailer.createTransport({
-  host: 'smtp.hostinger.com',
-  port: 587,
-  secure: false, // Use STARTTLS
+  host: process.env.SMTP_HOST || 'smtp.hostinger.com',
+  port: parseInt(process.env.SMTP_PORT || '587'),
+  secure: process.env.SMTP_SECURE === 'true', // Use STARTTLS by default
   auth: {
-    user: 'hello@hexen.in',
-    pass: 'l1XR#d!W'
+    user: process.env.SMTP_USER || 'hello@hexen.in',
+    pass: process.env.SMTP_PASSWORD || 'l1XR#d!W' // Fallback for development only
   },
   tls: {
     rejectUnauthorized: false
   },
-  debug: true,
-  logger: true
+  debug: process.env.NODE_ENV === 'development',
+  logger: process.env.NODE_ENV === 'development'
 });
 
 // Verify connection on startup
 transporter.verify(function (error, success) {
   if (error) {
-    console.error('SMTP verification FAILED:', error);
+    console.error('❌ SMTP verification FAILED:', error);
+    console.error('📧 Email Configuration:', {
+      host: process.env.SMTP_HOST || 'smtp.hostinger.com',
+      port: process.env.SMTP_PORT || '587',
+      user: process.env.SMTP_USER || 'hello@hexen.in',
+      passwordSet: !!(process.env.SMTP_PASSWORD || 'l1XR#d!W')
+    });
   } else {
     console.log('✅ SMTP Server is ready to send emails');
+    console.log('📧 Using email configuration:', {
+      host: process.env.SMTP_HOST || 'smtp.hostinger.com',
+      port: process.env.SMTP_PORT || '587',
+      user: process.env.SMTP_USER || 'hello@hexen.in'
+    });
   }
 });
+
+// GET endpoint for testing email configuration
+export async function GET() {
+  try {
+    // Test the SMTP connection
+    await transporter.verify();
+    
+    return NextResponse.json({ 
+      success: true, 
+      message: 'Email service is working correctly',
+      configuration: {
+        host: process.env.SMTP_HOST || 'smtp.hostinger.com',
+        port: process.env.SMTP_PORT || '587',
+        user: process.env.SMTP_USER || 'hello@hexen.in',
+        passwordSet: !!(process.env.SMTP_PASSWORD || 'l1XR#d!W')
+      }
+    });
+  } catch (error) {
+    console.error('❌ Email service test failed:', error);
+    return NextResponse.json({ 
+      success: false,
+      error: 'Email service test failed',
+      details: error instanceof Error ? error.message : 'Unknown error',
+      configuration: {
+        host: process.env.SMTP_HOST || 'smtp.hostinger.com',
+        port: process.env.SMTP_PORT || '587',
+        user: process.env.SMTP_USER || 'hello@hexen.in',
+        passwordSet: !!(process.env.SMTP_PASSWORD || 'l1XR#d!W')
+      }
+    }, { status: 500 });
+  }
+}
 
 export async function POST(request: Request) {
   try {
@@ -282,8 +325,8 @@ export async function POST(request: Request) {
         
         const vendorEmailHtml = `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-            <div style="text-align: center; padding: 20px; background-color: ${isCustomerEmail ? '#2563eb' : '#059669'}; color: white;">
-              <h1 style="margin: 0;">${isCustomerEmail ? 'Order Confirmed!' : 'New Order Received!'}</h1>
+            <div style="text-align: center; padding: 20px; background-color: #059669; color: white;">
+              <h1 style="margin: 0;">${isCustomerEmail ? 'Order Confirmed!' : 'You got an order!'}</h1>
             </div>
             
             <div style="padding: 20px;">
@@ -291,7 +334,7 @@ export async function POST(request: Request) {
               
               <p>${isCustomerEmail 
                 ? 'Thank you for your order! Your order has been confirmed and is being processed. We will notify you once it ships.' 
-                : 'You have received a new order from Fastkart. Please review the details below and prepare the items for shipment.'}</p>
+                : 'You got an order from Shopping lala! Please review the details below and prepare the items for shipment.'}</p>
               
               <div style="background-color: #f0fdf4; padding: 15px; border-radius: 5px; margin: 20px 0; border-left: 4px solid #059669;">
                 <p style="margin: 5px 0;"><strong>Order Number:</strong> ${data.orderId}</p>

@@ -16,9 +16,17 @@ import { useFirebaseData } from '@/hooks/use-firebase-database';
 import { useOrders } from '@/hooks/use-orders';
 
 export default function OverViewLayout({
-  bar_stats
+  children,
+  bar_stats,
+  area_stats,
+  pie_stats,
+  sales
 }: {
+  children: React.ReactNode;
   bar_stats: React.ReactNode;
+  area_stats: React.ReactNode;
+  pie_stats: React.ReactNode;
+  sales: React.ReactNode;
 }) {
   const { orders, loading: ordersLoading } = useOrders();
   const { data: customers, loading: customersLoading } = useFirebaseData('customers');
@@ -39,9 +47,9 @@ export default function OverViewLayout({
       };
     }
 
-    // Calculate total revenue from orders - exclude cancelled and refunded orders
+    // Calculate total revenue from orders - only include confirmed orders
     const validOrders = orders.filter((order: any) => 
-      order.orderStatus !== 'cancelled' && order.orderStatus !== 'refunded'
+      order.orderStatus === 'confirmed'
     );
     
     const totalRevenue = validOrders.reduce((sum: number, order: any) => {
@@ -156,7 +164,7 @@ export default function OverViewLayout({
                 {dashboardStats.revenueChange >= 0 ? <IconTrendingUp className='size-4' /> : <IconTrendingDown className='size-4' />}
               </div>
               <div className='text-muted-foreground'>
-                Total from all orders
+                Revenue from approved orders
               </div>
             </CardFooter>
           </Card>
@@ -228,9 +236,15 @@ export default function OverViewLayout({
             </CardFooter>
           </Card>
         </div>
-        <div className='grid grid-cols-1 gap-4'>
-          <div className='col-span-full'>{bar_stats}</div>
+        <div className='grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-7'>
+          <div className='col-span-4'>{bar_stats}</div>
+          <div className='col-span-4 md:col-span-3'>{sales}</div>
         </div>
+        <div className='grid grid-cols-1 gap-4 md:grid-cols-2'>
+          <div className='col-span-1'>{area_stats}</div>
+          <div className='col-span-1'>{pie_stats}</div>
+        </div>
+        {children}
       </div>
     </PageContainer>
   );

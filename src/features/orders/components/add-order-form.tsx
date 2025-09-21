@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useRouter } from 'next/navigation';
@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 import { 
   Plus,
   Trash2,
@@ -17,10 +18,14 @@ import {
   Loader2
 } from 'lucide-react';
 import { useFirebaseData } from '@/hooks/use-firebase-database';
+import { getShippingPrice } from '@/features/shipping/utils/shipping-utils';
+import { calculateDiscountAmount } from '@/features/coupons/utils/coupon-utils';
+import type { Coupon } from '@/types/coupon';
 import { orderFormSchema, type OrderFormData } from '../utils/form-schema';
 import { createCustomerOrder } from '@/lib/firebase-orders';
 import { EmailService } from '@/lib/email-service';
 import { InvoiceGenerator } from '@/lib/invoice-generator';
+import { calculateOrderCommission } from '../utils/commission-utils';
 
 interface Product {
   id: string;
@@ -28,6 +33,7 @@ interface Product {
   price: number;
   photo_url?: string;
   stock?: number;
+  commissionAmount?: number | string;
 }
 
 interface Customer {
@@ -73,10 +79,130 @@ export function AddOrderForm() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [customShipping] = useState<number | null>(null);
   const [couponCode, setCouponCode] = useState<string>('');
-  const [couponDiscount] = useState<number>(0);
+  const [appliedCoupon, setAppliedCoupon] = useState<Coupon | null>(null);
+  const [couponError, setCouponError] = useState<string>('');
+  const [isCouponApplied, setIsCouponApplied] = useState(false);
 
   const { data: customers } = useFirebaseData('customers');
   const { data: products } = useFirebaseData('products');
+  const { data: countries } = useFirebaseData('shipping_countries');
+  const { data: states } = useFirebaseData('shipping_states');
+  const { data: cities } = useFirebaseData('shipping_cities');
+  const { data: coupons } = useFirebaseData('coupons');
+
+  // Function to calculate shipping based on address
+  const calculateShipping = useCallback((country: string, state: string, city: string, subtotal: number): number => {
+    // If custom shipping is set, use that
+    if (customShipping !== null) {
+      return customShipping;
+    }
+
+    // If we have all shipping data and address info
+    if (countries && states && cities && country && state && city) {
+      const shippingCost = getShippingPrice(countries, states, cities, country, state, city);
+      if (shippingCost !== null) {
+        return shippingCost;
+      }
+    }
+
+    // Fallback to default logic (free shipping over 1000, otherwise 100)
+    return subtotal > 1000 ? 0 : 100;
+  }, [customShipping, countries, states, cities]);
+
+  // Function to validate and apply coupon
+  const handleApplyCoupon = () => {
+    if (!couponCode.trim()) {
+      setCouponError('Please enter a coupon code');
+      return;
+    }
+
+    if (!coupons) {
+      setCouponError('Unable to load coupons. Please try again.');
+      return;
+    }
+
+    // Find coupon by code
+    const coupon = Object.values(coupons).find(
+      (c: any) => c.code.toLowerCase() === couponCode.toLowerCase()
+    ) as Coupon | undefined;
+
+    if (!coupon) {
+      setCouponError('Invalid coupon code');
+      return;
+    }
+
+    // Check if coupon is valid
+    if (!coupon.isActive) {
+      setCouponError('This coupon is not active');
+      return;
+    }
+
+    if (new Date(coupon.validTo) <= new Date()) {
+      setCouponError('This coupon has expired');
+      return;
+    }
+
+    if (coupon.usageLimit && coupon.usageCount >= coupon.usageLimit) {
+      setCouponError('This coupon has reached its usage limit');
+      return;
+    }
+
+    if (coupon.usageCount >= coupon.totalQuantity) {
+      setCouponError('This coupon is no longer available');
+      return;
+    }
+
+    const currentUserId = watch('userId');
+    if (!currentUserId) {
+      setCouponError('Please select a customer first');
+      return;
+    }
+
+    // Calculate current subtotal
+    const currentSubtotal = selectedItems.reduce((sum, item) => {
+      return sum + (item.price || 0) * (item.quantity || 0);
+    }, 0);
+
+    // Check minimum order amount
+    if (coupon.minOrderAmount && currentSubtotal < coupon.minOrderAmount) {
+      setCouponError(`Minimum order amount of ₹${coupon.minOrderAmount} required for this coupon`);
+      return;
+    }
+
+    // Apply coupon
+    setAppliedCoupon(coupon);
+    setIsCouponApplied(true);
+    setCouponError('');
+    setValue('couponCode', couponCode);
+  };
+
+  // Function to remove applied coupon
+  const handleRemoveCoupon = () => {
+    setAppliedCoupon(null);
+    setIsCouponApplied(false);
+    setCouponCode('');
+    setCouponError('');
+    setValue('couponCode', '');
+    
+    // Force recalculation of totals by triggering the useEffect
+    // This ensures shipping is recalculated when coupon is removed
+    const subtotal = selectedItems.reduce((sum, item) => {
+      const itemTotal = (item.price || 0) * (item.quantity || 0);
+      return sum + itemTotal;
+    }, 0);
+    
+    // Recalculate shipping without coupon
+    const shipping = calculateShipping(
+      currentAddress?.country || '',
+      currentAddress?.state || '',
+      currentAddress?.city || '',
+      subtotal
+    );
+    
+    setValue('shipping', shipping);
+    setValue('discount', 0);
+    setValue('total', subtotal + shipping);
+  };
 
   const {
     register,
@@ -101,16 +227,21 @@ export function AddOrderForm() {
       subtotal: 0,
       discount: 0,
       shipping: 0,
+      commission: 0,
+      totalCommission: 0,
       total: 0,
       paymentMethod: 'cash-delivery',
-      paymentStatus: 'pending',
-      orderStatus: 'pending',
+      paymentStatus: 'pending', // Default value, not user-editable
+      orderStatus: 'pending',   // Default value, not user-editable
       orderNote: '',
       couponCode: '',
     },
   });
 
-  // Calculate totals when items or shipping change
+  // Watch address for dependency tracking
+  const currentAddress = watch('address');
+  
+  // Calculate totals when items, shipping, or address change
   useEffect(() => {
     const roundToTwo = (num: number) => Math.round(num * 100) / 100;
 
@@ -120,20 +251,98 @@ export function AddOrderForm() {
         return sum + itemTotal;
       }, 0);
       
-      const shipping = customShipping !== null ? customShipping : (subtotal > 1000 ? 0 : 100);
+      // Always calculate the base shipping cost first
+      let shipping = calculateShipping(
+        currentAddress?.country || '',
+        currentAddress?.state || '',
+        currentAddress?.city || '',
+        subtotal
+      );
+
+      // Calculate coupon discount
+      let couponDiscount = 0;
+      if (appliedCoupon) {
+        couponDiscount = calculateDiscountAmount(appliedCoupon, subtotal);
+        
+        // Handle free shipping coupon - override shipping to 0
+        if (appliedCoupon.discountType === 'free_shipping') {
+          shipping = 0;
+        }
+      }
+      // If no coupon is applied, ensure shipping is properly calculated
+      // (This handles the case when coupon is removed)
+
+      // Calculate commission based on order items - get commission from products database
+      let commission = 0;
+      if (products && selectedItems.length > 0) {
+        commission = calculateOrderCommission(selectedItems.map(item => {
+          const product = products[item.productId];
+          let commissionAmount = 0;
+          
+          // Get commission amount from product database
+          if (product && product.commissionAmount !== undefined && product.commissionAmount !== null) {
+            commissionAmount = typeof product.commissionAmount === 'string' 
+              ? parseFloat(product.commissionAmount) || 0
+              : Number(product.commissionAmount) || 0;
+          }
+          
+          // Enhanced debug log to see what we're getting
+          if (process.env.NODE_ENV === 'development') {
+            console.log('=== Commission Debug ===');
+            console.log('Product ID:', item.productId);
+            console.log('Product Name:', item.productName);
+            console.log('Products object exists:', !!products);
+            console.log('Product found:', !!product);
+            console.log('Raw commission from product DB:', product?.commissionAmount);
+            console.log('Parsed commission amount:', commissionAmount);
+            console.log('Commission amount type:', typeof product?.commissionAmount);
+            if (product) {
+              console.log('All product fields:', Object.keys(product));
+              console.log('Product name from DB:', product.name);
+              console.log('Product price from DB:', product.price);
+            } else {
+              console.log('Available product IDs:', Object.keys(products || {}));
+              console.log('Looking for ID:', item.productId);
+            }
+            console.log('========================');
+          }
+          
+          return {
+            id: item.productId,
+            name: item.productName,
+            price: item.price,
+            quantity: item.quantity,
+            total: item.total,
+            commissionAmount: commissionAmount
+          };
+        }));
+      }
+
       const totalDiscount = roundToTwo(couponDiscount);
       const total = roundToTwo(subtotal + shipping - totalDiscount);
 
       setValue('subtotal', subtotal);
       setValue('shipping', shipping);
       setValue('discount', totalDiscount);
+      setValue('commission', commission);
+      setValue('totalCommission', commission); // Same as commission for display
       setValue('total', total);
     } else {
+      // No items case
+      const shipping = calculateShipping(
+        currentAddress?.country || '',
+        currentAddress?.state || '',
+        currentAddress?.city || '',
+        0
+      );
       setValue('subtotal', 0);
-      setValue('shipping', customShipping !== null ? customShipping : 0);
+      setValue('shipping', shipping);
       setValue('discount', 0);
-      setValue('total', customShipping !== null ? customShipping : 0);
+      setValue('commission', 0);
+      setValue('totalCommission', 0);
+      setValue('total', shipping);
     }
+    
     // Map selectedItems to OrderFormData items format
     const orderItems = selectedItems.map(item => ({
       id: item.productId,
@@ -143,7 +352,7 @@ export function AddOrderForm() {
       total: item.total
     }));
     setValue('items', orderItems);
-  }, [selectedItems, customShipping, setValue, couponDiscount]);
+  }, [selectedItems, customShipping, setValue, appliedCoupon, watch, calculateShipping, countries, states, cities, currentAddress, products]);
 
   const handleCustomerSelect = (customerId: string) => {
     if (customers && customers[customerId]) {
@@ -235,33 +444,67 @@ export function AddOrderForm() {
       return;
     }
 
-    if (!data.address.street || !data.address.city || !data.address.state || 
-        !data.address.country || !data.address.postalCode) {
-      alert('Please fill in all required address information.');
+    if (!data.address.city || !data.address.state || !data.address.country) {
+      alert('Please fill in all required address information (City, State, Country).');
       return;
     }
 
     setIsSubmitting(true);
     try {
       // Create order data with all required fields
-        // Create order data with properly mapped items
-        const orderData: OrderFormData = {
-          ...data,
-          items: selectedItems.map(item => {
-            if (!item.productId || item.productId === '' || item.productId === 'undefined') {
-              throw new Error(`Invalid product ID: ${item.productId}. Please select a valid product.`);
-            }
-            
-            return {
-              id: item.productId, // Map productId to id
-              name: item.productName,
-              price: item.price,
-              quantity: item.quantity,
-              total: item.total,
-            };
-          }),
-          couponCode: couponCode || undefined,
-        };
+      // Create order data with properly mapped items
+      const orderData: OrderFormData = {
+        ...data,
+        items: selectedItems.map(item => {
+          if (!item.productId || item.productId === '' || item.productId === 'undefined') {
+            throw new Error(`Invalid product ID: ${item.productId}. Please select a valid product.`);
+          }
+          
+          if (!item.productName || item.productName.trim() === '') {
+            throw new Error(`Invalid product name for product ID: ${item.productId}`);
+          }
+          
+          if (item.price <= 0) {
+            throw new Error(`Invalid price for product: ${item.productName}`);
+          }
+          
+          if (item.quantity <= 0) {
+            throw new Error(`Invalid quantity for product: ${item.productName}`);
+          }
+          
+          // Get commission amount from products database
+          const product = products?.[item.productId];
+          let commissionAmount = 0;
+          if (product && product.commissionAmount !== undefined && product.commissionAmount !== null) {
+            commissionAmount = typeof product.commissionAmount === 'string' 
+              ? parseFloat(product.commissionAmount) || 0
+              : Number(product.commissionAmount) || 0;
+          }
+          
+          return {
+            id: item.productId, // Map productId to id
+            name: item.productName,
+            price: item.price,
+            quantity: item.quantity,
+            total: item.total,
+            commissionAmount: commissionAmount, // Add commission to each item
+          };
+        }),
+        couponCode: couponCode || undefined,
+      };
+
+      // Additional validation before saving
+      if (!orderData.userId || !orderData.userEmail) {
+        throw new Error('Customer information is missing');
+      }
+      
+      if (!orderData.address.city || !orderData.address.state || !orderData.address.country) {
+        throw new Error('Required address information is missing');
+      }
+      
+      if (orderData.items.length === 0) {
+        throw new Error('No items in the order');
+      }
 
       // Save to Firebase using new structure
       const orderId = await createCustomerOrder(data.userId, orderData);
@@ -315,7 +558,29 @@ export function AddOrderForm() {
       // Redirect to orders list
       router.push('/dashboard/orders');
     } catch (error) {
-      alert('Failed to create order. Please try again.');
+      // Log error for debugging (only in development)
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Order creation error:', error);
+      }
+      
+      // Provide more specific error messages
+      let errorMessage = 'Failed to create order. ';
+      
+      if (error instanceof Error) {
+        if (error.message.includes('Invalid product ID')) {
+          errorMessage += 'Please ensure all products are selected properly.';
+        } else if (error.message.includes('Firebase') || error.message.includes('database')) {
+          errorMessage += 'Database connection issue. Please check your internet connection and try again.';
+        } else if (error.message.includes('permission')) {
+          errorMessage += 'You do not have permission to create orders. Please contact an administrator.';
+        } else {
+          errorMessage += error.message;
+        }
+      } else {
+        errorMessage += 'An unexpected error occurred. Please try again.';
+      }
+      
+      alert(errorMessage);
     } finally {
       setIsSubmitting(false);
     }
@@ -444,21 +709,19 @@ export function AddOrderForm() {
                     <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
                       <div className="space-y-2">
                         <Label>Product *</Label>
-                        <Select
+                        <SearchableSelect
                           value={item.productId}
                           onValueChange={(value) => handleItemChange(index, 'productId', value)}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select product" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {products && Object.entries(products).map(([id, product]: [string, any]) => (
-                              <SelectItem key={id} value={id}>
-                                {product.name} - ₹{product.price}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                          placeholder="Select product"
+                          searchPlaceholder="Search products..."
+                          emptyText="No products found."
+                          options={products ? Object.entries(products).map(([id, product]: [string, any]) => ({
+                            value: id,
+                            label: product.name,
+                            description: `₹${product.price}`,
+                            searchableText: `${product.name} ${product.price}`,
+                          })) : []}
+                        />
                       </div>
 
                       <div className="space-y-2">
@@ -500,13 +763,13 @@ export function AddOrderForm() {
           </CardContent>
         </Card>
 
-        {/* Payment & Order Details */}
+        {/* Payment Details */}
         <Card>
           <CardHeader>
-            <CardTitle>Payment & Order Details</CardTitle>
+            <CardTitle>Payment Details</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-1 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="paymentMethod">Payment Method</Label>
                 <Controller
@@ -525,48 +788,6 @@ export function AddOrderForm() {
                   )}
                 />
               </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="paymentStatus">Payment Status</Label>
-                <Controller
-                  name="paymentStatus"
-                  control={control}
-                  render={({ field }) => (
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="pending">Pending</SelectItem>
-                        <SelectItem value="completed">Completed</SelectItem>
-                        <SelectItem value="failed">Failed</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  )}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="orderStatus">Order Status</Label>
-                <Controller
-                  name="orderStatus"
-                  control={control}
-                  render={({ field }) => (
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="pending">Pending</SelectItem>
-                        <SelectItem value="confirmed">Confirmed</SelectItem>
-                        <SelectItem value="shipped">Shipped</SelectItem>
-                        <SelectItem value="delivered">Delivered</SelectItem>
-                        <SelectItem value="cancelled">Cancelled</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  )}
-                />
-              </div>
             </div>
 
             <div className="space-y-2">
@@ -580,11 +801,53 @@ export function AddOrderForm() {
 
             <div className="space-y-2">
               <Label htmlFor="couponCode">Coupon Code (Optional)</Label>
-              <Input 
-                value={couponCode}
-                onChange={(e) => setCouponCode(e.target.value)}
-                placeholder="Enter coupon code"
-              />
+              <div className="flex gap-2">
+                <Input 
+                  value={couponCode}
+                  onChange={(e) => {
+                    setCouponCode(e.target.value);
+                    setCouponError('');
+                  }}
+                  placeholder="Enter coupon code"
+                  disabled={isCouponApplied}
+                  className={couponError ? 'border-red-500' : ''}
+                />
+                {!isCouponApplied ? (
+                  <Button 
+                    type="button" 
+                    onClick={handleApplyCoupon}
+                    disabled={!couponCode.trim()}
+                    variant="outline"
+                  >
+                    Apply
+                  </Button>
+                ) : (
+                  <Button 
+                    type="button" 
+                    onClick={handleRemoveCoupon}
+                    variant="outline"
+                  >
+                    Remove
+                  </Button>
+                )}
+              </div>
+              {couponError && (
+                <p className="text-sm text-red-600">{couponError}</p>
+              )}
+              {isCouponApplied && appliedCoupon && (
+                <div className="p-2 bg-green-50 border border-green-200 rounded text-sm text-green-800">
+                  ✓ Coupon &quot;{appliedCoupon.code}&quot; applied successfully!
+                  {appliedCoupon.discountType === 'percentage' && (
+                    <span> ({appliedCoupon.discountValue}% discount)</span>
+                  )}
+                  {appliedCoupon.discountType === 'fixed' && (
+                    <span> (₹{appliedCoupon.discountValue} discount)</span>
+                  )}
+                  {appliedCoupon.discountType === 'free_shipping' && (
+                    <span> (Free shipping)</span>
+                  )}
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -608,12 +871,57 @@ export function AddOrderForm() {
                 <span>Discount:</span>
                 <span>-₹{watch('discount')?.toFixed(2) || '0.00'}</span>
               </div>
+              <div className="flex justify-between text-blue-600">
+                <span>Commission:</span>
+                <span>₹{watch('commission')?.toFixed(2) || '0.00'}</span>
+              </div>
               <hr />
               <div className="flex justify-between font-semibold text-lg">
                 <span>Total:</span>
                 <span>₹{watch('total')?.toFixed(2) || '0.00'}</span>
               </div>
             </div>
+            
+            {/* Debug Information - Remove this after fixing */}
+            {process.env.NODE_ENV === 'development' && (
+              <div className="mt-4 p-2 bg-gray-100 rounded text-xs">
+                <strong>Debug Info:</strong>
+                <div className="mt-2">
+                  <div>Products loaded: {products ? 'Yes' : 'No'}</div>
+                  <div>Products count: {products ? Object.keys(products).length : 0}</div>
+                  <div>First few product IDs: {products ? Object.keys(products).slice(0, 3).join(', ') : 'None'}</div>
+                  <div>Current Commission: ₹{watch('commission')?.toFixed(2) || '0.00'}</div>
+                </div>
+                
+                {selectedItems.length > 0 && (
+                  <div className="mt-2">
+                    <strong>Selected Items:</strong>
+                    {selectedItems.map((item, index) => {
+                      const product = products?.[item.productId];
+                      return (
+                        <div key={index} className="mt-2 border-t pt-2">
+                          <div>Item {index + 1}: {item.productName}</div>
+                          <div>Product ID: {item.productId}</div>
+                          <div>Product Found: {product ? 'Yes' : 'No'}</div>
+                          {product && (
+                            <>
+                              <div>Commission Amount: {product.commissionAmount !== undefined ? product.commissionAmount : 'undefined'}</div>
+                              <div>Commission Type: {typeof product.commissionAmount}</div>
+                              <div>All Product Fields: {Object.keys(product).join(', ')}</div>
+                              <div>Product Name in DB: {product.name}</div>
+                              <div>Product Price in DB: {product.price}</div>
+                            </>
+                          )}
+                          {!product && (
+                            <div className="text-red-600">Product not found! Available IDs: {products ? Object.keys(products).slice(0, 5).join(', ') : 'None'}</div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
           </CardContent>
         </Card>
 

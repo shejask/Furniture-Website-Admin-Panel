@@ -33,6 +33,7 @@ import { type Order, type OrderSummary } from '../utils/form-schema';
 import { EmailService } from '@/lib/email-service';
 import { InvoiceGenerator } from '@/lib/invoice-generator';
 import { OrderActionManager } from '../utils/order-actions';
+import { toast } from 'sonner';
 
 
 export function OrdersTable() {
@@ -90,19 +91,19 @@ export function OrdersTable() {
   }, [allOrders, searchQuery, selectedStatus, selectedPaymentStatus]);
 
   const orderSummary: OrderSummary = useMemo(() => {
-    const totalOrders = allOrders.length;
-    // Exclude refunded and cancelled orders from revenue calculation
-    const validOrders = allOrders.filter(order => 
-      order.orderStatus !== 'refunded' && order.orderStatus !== 'cancelled'
+    const totalOrders = allOrders.filter(order => order.orderStatus === 'confirmed').length;
+    // Only include confirmed orders in revenue calculation
+    const confirmedOrders = allOrders.filter(order => 
+      order.orderStatus === 'confirmed'
     );
-    const totalRevenue = validOrders.reduce((sum, order) => sum + order.total, 0);
-    const averageOrderValue = validOrders.length > 0 ? totalRevenue / validOrders.length : 0;
+    const totalRevenue = confirmedOrders.reduce((sum, order) => sum + order.total, 0);
+    const averageOrderValue = confirmedOrders.length > 0 ? totalRevenue / confirmedOrders.length : 0;
     const pendingOrders = allOrders.filter(order => order.orderStatus === 'pending').length;
     const completedOrders = allOrders.filter(order => order.orderStatus === 'delivered').length;
     const cancelledOrders = allOrders.filter(order => order.orderStatus === 'cancelled').length;
 
-    // Find top customer (exclude refunded and cancelled orders)
-    const customerStats = validOrders.reduce((acc, order) => {
+    // Find top customer (only confirmed orders)
+    const customerStats = confirmedOrders.reduce((acc, order) => {
       if (!acc[order.userId]) {
         acc[order.userId] = {
           customerId: order.userId,
@@ -176,11 +177,15 @@ export function OrdersTable() {
 
   const handleConfirmOrder = async (order: Order) => {
     if (!order) {
-      alert('Invalid order data');
+      toast.error('Invalid order data');
       return;
     }
     
     setApprovingOrder(order.id);
+    
+    // Show loading toast
+    const loadingToast = toast.loading('Approving order...');
+    
     try {
       // Use OrderActionManager to create the update
       // const orderUpdates = OrderActionManager.confirmOrder(order, {
@@ -211,15 +216,19 @@ export function OrdersTable() {
           const emailSent = await EmailService.sendCustomerOrderConfirmation(updatedOrder, Buffer.from(html));
 
           if (emailSent) {
-            alert('Order confirmed successfully! Confirmation email sent to customer.');
+            toast.dismiss(loadingToast);
+            toast.success('Order confirmed successfully! Confirmation email sent to customer.');
           } else {
-            alert('Order confirmed successfully! But failed to send confirmation email. Please check your SMTP settings in .env.local');
+            toast.dismiss(loadingToast);
+            toast.warning('Order confirmed successfully! But failed to send confirmation email. Please check your SMTP settings.');
           }
         } catch (emailError) {
-          alert('Order confirmed successfully! But failed to send confirmation email. Error: ' + (emailError instanceof Error ? emailError.message : 'Unknown error'));
+          toast.dismiss(loadingToast);
+          toast.warning('Order confirmed successfully! But failed to send confirmation email. Error: ' + (emailError instanceof Error ? emailError.message : 'Unknown error'));
         }
       } else {
-        alert('Order confirmed successfully! No customer email available.');
+        toast.dismiss(loadingToast);
+        toast.success('Order confirmed successfully! No customer email available.');
       }
     } catch (error) {
       // More specific error message based on the error
@@ -238,7 +247,8 @@ export function OrdersTable() {
         errorMessage += 'Please try again.';
       }
       
-      alert(errorMessage);
+      toast.dismiss(loadingToast);
+      toast.error(errorMessage);
     } finally {
       setApprovingOrder(null);
     }
@@ -563,38 +573,6 @@ export function OrdersTable() {
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex items-center justify-end gap-2">
-                            {OrderActionManager.canConfirmOrder(order) && (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => handleShowConfirmDialog(order)}
-                                className="text-green-600 border-green-200 hover:bg-green-50"
-                                disabled={approvingOrder === order.id}
-                                title="Confirm Order"
-                              >
-                                {approvingOrder === order.id ? (
-                                  <Clock className="h-4 w-4 animate-spin" />
-                                ) : (
-                                  <CheckCircle className="h-4 w-4" />
-                                )}
-                              </Button>
-                            )}
-                            {OrderActionManager.canCancelOrder(order) && (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => handleShowCancelDialog(order)}
-                                className="text-red-600 border-red-200 hover:bg-red-50"
-                                disabled={rejectingOrder === order.id}
-                                title="Cancel Order"
-                              >
-                                {rejectingOrder === order.id ? (
-                                  <Clock className="h-4 w-4 animate-spin" />
-                                ) : (
-                                  <XCircle className="h-4 w-4" />
-                                )}
-                              </Button>
-                            )}
                             <Button
                               variant="ghost"
                               size="sm"
@@ -610,15 +588,6 @@ export function OrdersTable() {
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
                                 <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                                {OrderActionManager.canConfirmOrder(order) && (
-                                  <DropdownMenuItem 
-                                    onClick={() => handleShowConfirmDialog(order)}
-                                    className="text-green-600"
-                                  >
-                                    <CheckCircle className="mr-2 h-4 w-4" />
-                                    Confirm Order
-                                  </DropdownMenuItem>
-                                )}
                                 <DropdownMenuItem onClick={() => handleViewDetails(order)}>
                                   <Eye className="mr-2 h-4 w-4" />
                                   View Details
@@ -629,25 +598,6 @@ export function OrdersTable() {
                                   Download Invoice
                                 </DropdownMenuItem>
                                 <DropdownMenuSeparator />
-                                {order.orderStatus === 'pending' && (
-                                  <>
-                                    <DropdownMenuItem
-                                      onClick={() => handleApproveOrder(order)}
-                                      className="text-green-600"
-                                    >
-                                      <CheckCircle className="mr-2 h-4 w-4" />
-                                      Approve Order
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem
-                                      onClick={() => handleCancelOrder(order, 'Order cancelled by admin')}
-                                      className="text-red-600"
-                                    >
-                                      <XCircle className="mr-2 h-4 w-4" />
-                                      Cancel Order
-                                    </DropdownMenuItem>
-                                    <DropdownMenuSeparator />
-                                  </>
-                                )}
                                 <DropdownMenuItem
                                   onClick={() => handleDelete(order)}
                                   className="text-red-600"

@@ -41,6 +41,8 @@ export const orderFormSchema = z.object({
   subtotal: z.number().min(0, 'Subtotal must be positive'),
   discount: z.number().min(0, 'Discount must be positive'),
   shipping: z.number().min(0, 'Shipping must be positive'),
+  commission: z.number().min(0, 'Commission must be positive'),
+  totalCommission: z.number().min(0, 'Total commission must be positive'),
   total: z.number().min(0, 'Total must be positive'),
   
   // Optional fields
@@ -65,6 +67,8 @@ export interface OrderItem {
   vendor?: string; // Vendor ID
   vendorEmail?: string; // Vendor email
   vendorName?: string; // Vendor name
+  // Commission information
+  commissionAmount?: number | string; // Commission amount per item (can be string from database)
 }
 
 // Order address interface
@@ -100,6 +104,8 @@ export interface Order {
   subtotal: number;
   discount: number;
   shipping: number;
+  commission: number;
+  totalCommission: number;
   total: number;
   orderNote?: string;
   couponCode?: string;

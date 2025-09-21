@@ -85,7 +85,7 @@ export class OrderManagementService {
           // Update order with Shiprocket details
           const orderWithShipping = {
             ...updatedOrder,
-            shiprocketOrderId: shiprocketResponse.order_id,
+            shiprocketOrderId: order.orderId, // Use our order ID instead of Shiprocket's order_id
             shiprocketShipmentId: shiprocketResponse.shipment_id,
             awbCode: shiprocketResponse.awb_code,
             courierName: shiprocketResponse.courier_name,
@@ -101,22 +101,32 @@ export class OrderManagementService {
       }
 
       // Step 5: Send confirmation email and vendor notification
+      const emailUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3004'}/api/email`;
+      
       try {
-        // Send vendor-style email to customer
+        // Send order confirmation email to customer
         try {
-          const emailUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3004'}/api/email`;
           
           const emailResponse = await fetch(emailUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              type: 'vendor-order-notification',
+              type: 'customer-order-confirmation',
               to: updatedOrder.userEmail,
               data: {
                 ...updatedOrder,
-                // Override customer name for the email
                 customerName: `${updatedOrder.address.firstName} ${updatedOrder.address.lastName}`,
-                orderDate: updatedOrder.createdAt
+                customerEmail: updatedOrder.userEmail,
+                orderDate: updatedOrder.createdAt,
+                totalAmount: updatedOrder.total,
+                items: updatedOrder.items.map(item => ({
+                  name: item.name,
+                  productName: item.name,
+                  price: item.salePrice || item.price,
+                  quantity: item.quantity,
+                  total: (item.salePrice || item.price) * item.quantity
+                })),
+                address: updatedOrder.address
               }
             })
           });
@@ -138,15 +148,21 @@ export class OrderManagementService {
             }
           }
         } catch (emailError) {
+          console.error('❌ Customer email error:', emailError);
           if (emailError instanceof TypeError && emailError.message.includes('fetch')) {
-            result.warnings.push(`Customer email service error: Unable to connect to email API. Please check if the server is running.`);
+            result.warnings.push(`Customer email service error: Unable to connect to email API at ${emailUrl}. Please check if the server is running on the correct port.`);
+          } else if (emailError instanceof Error && emailError.message.includes('ECONNREFUSED')) {
+            result.warnings.push(`Customer email service error: Connection refused. Server may not be running or email service is unavailable.`);
           } else {
             result.warnings.push(`Customer email service error: ${emailError instanceof Error ? emailError.message : 'Unknown error'}`);
           }
         }
 
-        // Send vendor notification if vendor email exists
-        if (updatedOrder.vendorEmail) {
+        // Send vendor notification if vendor email exists (check both order and item level)
+        const hasVendorInfo = updatedOrder.vendorEmail || 
+          updatedOrder.items.some(item => item.vendorEmail && item.vendorName);
+          
+        if (hasVendorInfo) {
           try {
             const vendorEmailSent = await EmailService.sendVendorOrderNotification(updatedOrder);
             if (vendorEmailSent) {

@@ -30,6 +30,7 @@ import { getAllOrders, deleteCustomerOrder } from '@/lib/firebase-orders';
 import { OrderManagementService } from '@/lib/order-management-service';
 import { StockService } from '@/lib/stock-service';
 import { InvoiceGenerator } from '@/lib/invoice-generator';
+import { toast } from 'sonner';
 import Image from 'next/image';
 
 interface OrderDetailsPageProps {
@@ -97,7 +98,7 @@ export function OrderDetailsPage({ orderId }: OrderDetailsPageProps) {
         router.push('/dashboard/orders');
       } catch (error) {
         console.error('Error deleting order:', error);
-        alert('Failed to delete order. Please try again.');
+        toast.error('Failed to delete order. Please try again.');
       }
     }
   };
@@ -141,20 +142,18 @@ export function OrderDetailsPage({ orderId }: OrderDetailsPageProps) {
       await InvoiceGenerator.downloadInvoice(invoiceData);
     } catch (error) {
       console.error('Error downloading invoice:', error);
-      alert('Failed to download invoice. Please try again.');
+      toast.error('Failed to download invoice. Please try again.');
     }
   };
 
   const handleApproveOrder = async () => {
     if (!order) return;
     
-    const stockMessage = stockStatus && !stockStatus.canFulfill 
-      ? '\n\n⚠️ WARNING: Some items have insufficient stock and cannot be fulfilled!'
-      : '';
+    // Show loading toast immediately
+    const loadingToast = toast.loading('Approving order...');
     
-    if (confirm('Are you sure you want to approve this order? This will:\n\n• Confirm the order\n• Reduce product stock\n• Create shipping label (if Shiprocket is configured)\n• Send confirmation email to customer\n• Send order details to vendor' + stockMessage)) {
-      try {
-        setApprovingOrder(true);
+    try {
+      setApprovingOrder(true);
         
         // Use the comprehensive order management service
         const result = await OrderManagementService.confirmOrder(order);
@@ -167,50 +166,40 @@ export function OrderDetailsPage({ orderId }: OrderDetailsPageProps) {
             setOrder(updatedOrder);
           }
           
-          // Show detailed success message
-          let successMessage = 'Order approved successfully!';
-          const details = [];
-          
+          // Show detailed success messages
           if (result.stockReduced) {
-            details.push(`✓ Stock reduced for ${result.stockResult?.updatedProducts.length || 0} products`);
+            toast.success(`Stock reduced for ${result.stockResult?.updatedProducts.length || 0} products`);
           }
           if (result.shiprocketCreated) {
-            details.push(`✓ Shipping label created (AWB: ${result.shiprocketData?.awb_code || 'N/A'})`);
+            toast.success(`Shipping label created (AWB: ${result.shiprocketData?.awb_code || 'N/A'})`);
           }
           if (result.emailSent) {
-            details.push('✓ Confirmation email sent to customer');
+            toast.success('Confirmation email sent to customer');
           }
           if (order.vendorEmail) {
-            details.push('✓ Vendor notification sent');
+            toast.success('Vendor notification sent');
           }
           
-          if (details.length > 0) {
-            successMessage += '\n\n' + details.join('\n');
-          }
-          
+          toast.dismiss(loadingToast);
+          toast.success('Order approved successfully!');
           if (result.warnings.length > 0) {
-            successMessage += '\n\nWarnings:\n' + result.warnings.map(w => `⚠ ${w}`).join('\n');
+            toast.warning(result.warnings.join(', '));
           }
-          
-          alert(successMessage);
         } else {
-          // Show error details
-          let errorMessage = 'Order approval failed:';
-          errorMessage += '\n\n' + result.errors.map(e => `✗ ${e}`).join('\n');
-          
+          toast.dismiss(loadingToast);
+          toast.error(result.errors.join(', '));
           if (result.warnings.length > 0) {
-            errorMessage += '\n\nWarnings:\n' + result.warnings.map(w => `⚠ ${w}`).join('\n');
+            toast.warning(result.warnings.join(', '));
           }
-          
-          alert(errorMessage);
         }
       } catch (error) {
         console.error('Error approving order:', error);
-        alert('Failed to approve order. Please try again.\n\nError: ' + (error instanceof Error ? error.message : 'Unknown error'));
+        toast.dismiss(loadingToast);
+        toast.error('Failed to approve order. Error: ' + (error instanceof Error ? error.message : 'Unknown error'));
       } finally {
         setApprovingOrder(false);
+        toast.dismiss(loadingToast);
       }
-    }
   };
 
   const handleCancelOrder = async () => {
@@ -233,35 +222,23 @@ export function OrderDetailsPage({ orderId }: OrderDetailsPageProps) {
           setOrder(updatedOrder);
         }
         
-        // Show detailed success message
-        let successMessage = 'Order cancelled successfully!';
-        const details = [];
         
+        toast.success('Order cancelled successfully!');
         if (result.stockRestored) {
-          details.push('✓ Stock restored for cancelled items');
+          toast.success('Stock restored for cancelled items');
         }
         if (result.emailSent) {
-          details.push('✓ Cancellation email sent to customer');
+          toast.success('Cancellation email sent to customer');
         }
-        
-        if (details.length > 0) {
-          successMessage += '\n\n' + details.join('\n');
-        }
-        
         if (result.errors.length > 0) {
-          successMessage += '\n\nWarnings:\n' + result.errors.map(e => `⚠ ${e}`).join('\n');
+          toast.warning(result.errors.join(', '));
         }
-        
-        alert(successMessage);
       } else {
-        // Show error details
-        let errorMessage = 'Order cancellation failed:';
-        errorMessage += '\n\n' + result.errors.map(e => `✗ ${e}`).join('\n');
-        alert(errorMessage);
+        toast.error('Order cancellation failed: ' + result.errors.join(', '));
       }
     } catch (error) {
       console.error('Failed to cancel order:', error);
-      alert('Failed to cancel order. Please try again.\n\nError: ' + (error instanceof Error ? error.message : 'Unknown error'));
+      toast.error('Failed to cancel order. Error: ' + (error instanceof Error ? error.message : 'Unknown error'));
     } finally {
       setCancellingOrder(false);
     }
@@ -287,35 +264,23 @@ export function OrderDetailsPage({ orderId }: OrderDetailsPageProps) {
           setOrder(updatedOrder);
         }
         
-        // Show detailed success message
-        let successMessage = 'Order refunded successfully!';
-        const details = [];
         
+        toast.success('Order refunded successfully!');
         if (result.stockRestored) {
-          details.push('✓ Stock restored for refunded items');
+          toast.success('Stock restored for refunded items');
         }
         if (result.emailSent) {
-          details.push('✓ Refund confirmation email sent to customer');
+          toast.success('Refund confirmation email sent to customer');
         }
-        
-        if (details.length > 0) {
-          successMessage += '\n\n' + details.join('\n');
-        }
-        
         if (result.errors.length > 0) {
-          successMessage += '\n\nWarnings:\n' + result.errors.map(e => `⚠ ${e}`).join('\n');
+          toast.warning(result.errors.join(', '));
         }
-        
-        alert(successMessage);
       } else {
-        // Show error details
-        let errorMessage = 'Order refund failed:';
-        errorMessage += '\n\n' + result.errors.map(e => `✗ ${e}`).join('\n');
-        alert(errorMessage);
+        toast.error('Order refund failed: ' + result.errors.join(', '));
       }
     } catch (error) {
       console.error('Failed to refund order:', error);
-      alert('Failed to refund order. Please try again.\n\nError: ' + (error instanceof Error ? error.message : 'Unknown error'));
+      toast.error('Failed to refund order. Error: ' + (error instanceof Error ? error.message : 'Unknown error'));
     } finally {
       setRefundingOrder(false);
     }
@@ -588,35 +553,76 @@ export function OrderDetailsPage({ orderId }: OrderDetailsPageProps) {
             </CardContent>
           </Card>
 
-          {/* Order Vendor Information */}
-          {order.vendorName && (
+          {/* Vendor Information */}
+          {(order.vendorName || order.items?.some(item => item.vendorName)) && (
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Store className="h-5 w-5" />
-                  Order Vendor
+                  Vendor Information
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
-                    <Store className="h-6 w-6 text-blue-600" />
-                  </div>
-                  <div className="flex-1">
-                    <div className="font-semibold text-lg">{order.vendorName}</div>
-                    <div className="text-sm text-muted-foreground">
-                      {order.vendorEmail && (
-                        <span className="flex items-center gap-1">
-                          <Mail className="h-4 w-4" />
-                          {order.vendorEmail}
-                        </span>
-                      )}
+                {order.vendorName ? (
+                  // Single vendor order
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
+                      <Store className="h-6 w-6 text-blue-600" />
                     </div>
-                    <div className="text-xs text-muted-foreground mt-1">
-                      Vendor ID: {order.vendor}
+                    <div className="flex-1">
+                      <div className="font-semibold text-lg">{order.vendorName}</div>
+                      <div className="text-sm text-muted-foreground">
+                        {order.vendorEmail && (
+                          <span className="flex items-center gap-1">
+                            <Mail className="h-4 w-4" />
+                            {order.vendorEmail}
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-xs text-muted-foreground mt-1">
+                        Vendor ID: {order.vendor}
+                      </div>
                     </div>
                   </div>
-                </div>
+                ) : (
+                  // Multi-vendor order - show all unique vendors
+                  <div className="space-y-4">
+                    <div className="text-sm text-muted-foreground mb-3">
+                      This order contains products from multiple vendors:
+                    </div>
+                    {order.items
+                      ?.filter((item, index, self) => 
+                        item.vendorName && 
+                        self.findIndex(i => i.vendor === item.vendor) === index
+                      )
+                      .map((item, index) => (
+                        <div key={index} className="flex items-center gap-3 p-3 border rounded-lg">
+                          <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
+                            <Store className="h-5 w-5 text-green-600" />
+                          </div>
+                          <div className="flex-1">
+                            <div className="font-medium">{item.vendorName}</div>
+                            <div className="text-sm text-muted-foreground">
+                              {item.vendorEmail && (
+                                <span className="flex items-center gap-1">
+                                  <Mail className="h-3 w-3" />
+                                  {item.vendorEmail}
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              Vendor ID: {item.vendor}
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-sm font-medium">
+                              {order.items?.filter(i => i.vendor === item.vendor).length} product(s)
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                )}
               </CardContent>
             </Card>
           )}
@@ -758,52 +764,6 @@ export function OrderDetailsPage({ orderId }: OrderDetailsPageProps) {
             </CardContent>
           </Card>
 
-          {/* Item-Level Vendor Information */}
-          {order.items && order.items.length > 0 && order.items.some(item => item.vendorName) && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Store className="h-5 w-5" />
-                  Product Vendors
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {order.items
-                    .filter(item => item.vendorName)
-                    .map((item, index) => (
-                      <div key={index} className="flex items-center justify-between p-3 border rounded-lg">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
-                            <Store className="h-5 w-5 text-green-600" />
-                          </div>
-                          <div>
-                            <div className="font-medium">{item.vendorName}</div>
-                            <div className="text-sm text-muted-foreground">
-                              {item.vendorEmail && (
-                                <span className="flex items-center gap-1">
-                                  <Mail className="h-3 w-3" />
-                                  {item.vendorEmail}
-                                </span>
-                              )}
-                            </div>
-                            <div className="text-xs text-muted-foreground">
-                              Vendor ID: {item.vendor}
-                            </div>
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <div className="text-sm font-medium">{item.name}</div>
-                          <div className="text-xs text-muted-foreground">
-                            Qty: {item.quantity}
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                </div>
-              </CardContent>
-            </Card>
-          )}
         </div>
 
         {/* Sidebar */}
@@ -838,6 +798,10 @@ export function OrderDetailsPage({ orderId }: OrderDetailsPageProps) {
                     <span>Applied</span>
                   </div>
                 )}
+                <div className="flex justify-between text-blue-600">
+                  <span>Commission</span>
+                  <span>₹{(order.totalCommission || order.commission || 0).toFixed(2)}</span>
+                </div>
                 <hr />
                 <div className="flex justify-between font-semibold text-lg">
                   <span>Total</span>
@@ -905,12 +869,10 @@ export function OrderDetailsPage({ orderId }: OrderDetailsPageProps) {
                   </div>
                 )}
                 
-                {order.shiprocketOrderId && (
-                  <div>
-                    <div className="text-sm text-muted-foreground">Shiprocket Order ID</div>
-                    <div className="font-mono text-sm">{order.shiprocketOrderId}</div>
-                  </div>
-                )}
+                <div>
+                  <div className="text-sm text-muted-foreground">Shiprocket Order ID</div>
+                  <div className="font-mono text-sm">{order.orderId}</div>
+                </div>
                 
                 {order.shiprocketShipmentId && (
                   <div>

@@ -45,9 +45,8 @@ export function PaymentsAnalytics() {
       .filter(order => 
         order.paymentStatus && 
         order.razorpayPaymentId && 
-        order.orderStatus !== 'cancelled' && 
-        order.orderStatus !== 'refunded'
-      ) // Only orders with Razorpay payments, excluding cancelled and refunded orders
+        order.orderStatus === 'confirmed'
+      ) // Only confirmed orders with Razorpay payments
       .map(order => {
         // Find customer name
         let customerName = 'Unknown Customer';
