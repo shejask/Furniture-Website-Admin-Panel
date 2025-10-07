@@ -88,13 +88,32 @@ function SimpleProductTable({ products, getVendorName, getCategoryName }: { prod
           {products.map((product, index) => (
             <TableRow key={product.id || index}>
               <TableCell>
-                <Image 
-                  src={product.thumbnail || product.images?.[0] || '/placeholder-product.png'} 
-                  alt={product.name}
-                  width={48}
-                  height={48}
-                  className="w-12 h-12 object-cover rounded"
-                />
+                {(() => {
+                  const src: string = product.thumbnail || (Array.isArray(product.images) ? product.images[0] : '') || '/placeholder-avatar.svg';
+                  const isExternal = /^https?:\/\//i.test(src);
+                  if (isExternal) {
+                    return (
+                      // Use native img for external URLs to avoid Next Image domain restrictions
+                      <img
+                        src={src}
+                        alt={product.name}
+                        width={48}
+                        height={48}
+                        className="w-12 h-12 object-cover rounded"
+                        onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/placeholder-avatar.svg'; }}
+                      />
+                    );
+                  }
+                  return (
+                    <Image 
+                      src={src || '/placeholder-avatar.svg'} 
+                      alt={product.name}
+                      width={48}
+                      height={48}
+                      className="w-12 h-12 object-cover rounded"
+                    />
+                  );
+                })()}
               </TableCell>
               <TableCell className="font-medium">{product.name}</TableCell>
               <TableCell>{getCategoryName(product.categories || product.category)}</TableCell>

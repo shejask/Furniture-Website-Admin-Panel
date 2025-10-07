@@ -45,6 +45,16 @@ export function OrderDetailsPage({ orderId }: OrderDetailsPageProps) {
   const [approvingOrder, setApprovingOrder] = useState(false);
   const [cancellingOrder, setCancellingOrder] = useState(false);
   const [refundingOrder, setRefundingOrder] = useState(false);
+  const [trackingLoading, setTrackingLoading] = useState(false);
+  const [trackingError, setTrackingError] = useState<string | null>(null);
+  const [trackingInfo, setTrackingInfo] = useState<{
+    status?: string;
+    statusCode?: number | string;
+    courierName?: string;
+    awbCode?: string | null;
+    expectedDelivery?: string | null;
+    checkpoints?: any[];
+  } | null>(null);
   const [stockStatus, setStockStatus] = useState<{
     canFulfill: boolean;
     insufficientStock: Array<{
@@ -88,6 +98,35 @@ export function OrderDetailsPage({ orderId }: OrderDetailsPageProps) {
       fetchOrder();
     }
   }, [orderId]);
+
+  // Fetch Shiprocket tracking when we have identifiers
+  useEffect(() => {
+    const fetchTracking = async () => {
+      if (!order) return;
+      const shipmentId = order.shiprocketShipmentId || undefined;
+      const awb = order.awbCode || undefined;
+      if (!shipmentId && !awb) return;
+      try {
+        setTrackingLoading(true);
+        setTrackingError(null);
+        const params = new URLSearchParams();
+        if (shipmentId) params.set('shipmentId', String(shipmentId));
+        if (!shipmentId && awb) params.set('awb', String(awb));
+        const res = await fetch(`/api/track-shiprocket?${params.toString()}`, { cache: 'no-store' });
+        const json = await res.json();
+        if (!res.ok || !json.success) {
+          throw new Error(json.error || 'Failed to fetch tracking');
+        }
+        setTrackingInfo(json.data || null);
+      } catch (e) {
+        setTrackingError(e instanceof Error ? e.message : 'Unknown error');
+        setTrackingInfo(null);
+      } finally {
+        setTrackingLoading(false);
+      }
+    };
+    fetchTracking();
+  }, [order]);
 
   const handleDelete = async () => {
     if (!order) return;
@@ -855,6 +894,138 @@ export function OrderDetailsPage({ orderId }: OrderDetailsPageProps) {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
+                {/* Dynamic Shiprocket Status */}
+                {(trackingLoading) && (
+                  <div className="flex items-center gap-2 text-muted-foreground text-sm">
+                    <div className="mr-1 h-4 w-4 animate-spin rounded-full border-2 border-muted-foreground border-t-transparent" />
+                    <span>Fetching live tracking status…</span>
+                  </div>
+                )}
+                {trackingError && (
+                  <div className="text-sm text-red-600">Failed to load tracking: {trackingError}</div>
+                )}
+                {trackingInfo && (
+                  <div className="space-y-3">
+                    <div className="flex flex-wrap items-center gap-3">
+                      <div className="text-sm text-muted-foreground">Status</div>
+                      <div className="text-sm font-semibold">{trackingInfo.status || 'N/A'}</div>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <div className="text-sm text-muted-foreground">Courier Partner</div>
+                        <div className="font-medium">{trackingInfo.courierName || order.courierName || 'N/A'}</div>
+                      </div>
+                      <div>
+                        <div className="text-sm text-muted-foreground">AWB Code</div>
+                        <div className="font-mono font-semibold text-primary">{trackingInfo.awbCode || order.awbCode || 'N/A'}</div>
+                      </div>
+                      <div>
+                        <div className="text-sm text-muted-foreground">Expected Delivery</div>
+                        <div className="font-medium">{trackingInfo.expectedDelivery ? new Date(trackingInfo.expectedDelivery).toLocaleDateString() : '—'}</div>
+                      </div>
+                    </div>
+
+                    {/* 5-step progress tracker - enhanced design */}
+                    <div className="pt-2">
+                      {(() => {
+                        const steps = [
+                          { key: 'placed', label: 'Order Placed', icon: Package },
+                          { key: 'confirmed', label: 'Order Confirmed', icon: CheckCircle },
+                          { key: 'shipped', label: 'Shipped', icon: Truck },
+                          { key: 'out_for', label: 'Out for Delivery', icon: Truck },
+                          { key: 'delivered', label: 'Delivered', icon: CheckCircle },
+                        ];
+
+                        const statusText = (trackingInfo.status || order.orderStatus || '').toLowerCase();
+                        let currentStep = 1;
+                        if (statusText.includes('delivered')) currentStep = 5;
+                        else if (statusText.includes('out for delivery') || statusText.includes('out for')) currentStep = 4;
+                        else if (statusText.includes('shipped') || statusText.includes('in transit') || statusText.includes('in-transit')) currentStep = 3;
+                        else if (statusText.includes('confirmed') || statusText.includes('packed') || statusText.includes('ready to ship')) currentStep = 2;
+                        else currentStep = 1;
+
+                        // Attempt simple timestamps from checkpoints
+                        const checkpoints = Array.isArray(trackingInfo.checkpoints) ? trackingInfo.checkpoints : [];
+                        const findTime = (matchers: string[]) => {
+                          const cp = checkpoints.find((c: any) => {
+                            const t = `${c?.current_status || c?.status || c?.remark || ''}`.toLowerCase();
+                            return matchers.some(m => t.includes(m));
+                          });
+                          const time = cp?.updated_at || cp?.date || cp?.time || cp?.scan_date_time;
+                          return time ? new Date(time).toLocaleString() : null;
+                        };
+                        const stepTimes: Array<string | null> = [
+                          order.createdAt ? new Date(order.createdAt).toLocaleString() : null,
+                          findTime(['confirmed', 'packed', 'ready to ship']) || (order.updatedAt ? new Date(order.updatedAt).toLocaleString() : null),
+                          findTime(['shipped', 'in transit', 'in-transit']),
+                          findTime(['out for delivery', 'out for']),
+                          findTime(['delivered']),
+                        ];
+
+                        return (
+                          <div className="space-y-3">
+                            <div className="flex items-center justify-between">
+                              {steps.map((s, idx) => {
+                                const IconComp = s.icon;
+                                const stepIndex = idx + 1;
+                                const active = stepIndex <= currentStep;
+                                const completed = stepIndex < currentStep;
+                                return (
+                                  <div key={s.key} className="flex-1 flex items-center">
+                                    <div className={`relative flex items-center justify-center h-8 w-8 rounded-full border text-[10px] sm:text-xs font-bold 
+                                      ${active ? 'bg-primary text-primary-foreground border-primary shadow-sm' : 'bg-background text-muted-foreground border-muted'}
+                                    `}>
+                                      <IconComp className={`h-4 w-4 ${completed ? 'opacity-100' : 'opacity-80'}`} />
+                                      {completed && (
+                                        <span className="absolute -bottom-1 -right-1 h-3 w-3 rounded-full bg-primary/90 border border-background" />
+                                      )}
+                                    </div>
+                                    {idx < steps.length - 1 && (
+                                      <div className={`h-1 flex-1 mx-2 rounded-full overflow-hidden`}>
+                                        <div className={`h-full w-full ${stepIndex < currentStep ? 'bg-primary' : 'bg-muted'}`} />
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                            <div className="grid grid-cols-5 gap-2 text-[10px] sm:text-xs">
+                              {steps.map((s) => (
+                                <div key={s.key} className="text-center text-muted-foreground">{s.label}</div>
+                              ))}
+                            </div>
+                            <div className="grid grid-cols-5 gap-2 text-[10px] sm:text-xs">
+                              {stepTimes.map((t, i) => (
+                                <div key={i} className="text-center text-muted-foreground">{t || ''}</div>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </div>
+
+                    {/* Latest checkpoints */}
+                    {Array.isArray(trackingInfo.checkpoints) && trackingInfo.checkpoints.length > 0 && (
+                      <div className="space-y-2">
+                        <div className="text-sm text-muted-foreground">Recent Updates</div>
+                        <div className="space-y-2 max-h-44 overflow-auto pr-1">
+                          {trackingInfo.checkpoints.slice(0, 5).map((cp: any, i: number) => {
+                            const desc = cp?.current_status || cp?.status || cp?.remark || cp?.activity || 'Update';
+                            const loc = cp?.location || cp?.location_city || cp?.scan_location || '';
+                            const time = cp?.updated_at || cp?.date || cp?.time || cp?.scan_date_time;
+                            return (
+                              <div key={i} className="text-xs border rounded p-2">
+                                <div className="font-medium">{desc}</div>
+                                <div className="text-muted-foreground">{loc}</div>
+                                <div className="text-muted-foreground">{time ? new Date(time).toLocaleString() : ''}</div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
                 {order.awbCode && (
                   <div>
                     <div className="text-sm text-muted-foreground">AWB Code</div>

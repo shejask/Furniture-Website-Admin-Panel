@@ -2,20 +2,31 @@
 
 import { useState, useMemo, useEffect } from 'react';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Calendar } from '@/components/ui/calendar';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
   DollarSign, 
   TrendingUp, 
   CreditCard, 
-  CheckCircle
+  CheckCircle,
+  Download,
+  Calendar as CalendarIcon
 } from 'lucide-react';
+import { format } from 'date-fns';
+import { cn } from '@/lib/utils';
 import { useOrders } from '@/hooks/use-orders';
 import { type PaymentAnalytics } from '../utils/form-schema';
 import { getCurrentUser } from '@/lib/auth';
 
 export function VendorPaymentsAnalytics() {
   const [currentVendor, setCurrentVendor] = useState<any>(null);
+  const [selectedPeriod, setSelectedPeriod] = useState<string>('30d');
+  const [startDate, setStartDate] = useState<Date | undefined>(undefined);
+  const [endDate, setEndDate] = useState<Date | undefined>(undefined);
 
   const { orders, loading: ordersLoading } = useOrders();
 
@@ -42,39 +53,66 @@ export function VendorPaymentsAnalytics() {
       return false;
     });
     
-    return vendorOrders
-      .filter(order => 
-        order.paymentStatus && 
-        order.razorpayPaymentId && 
-        order.orderStatus === 'confirmed'
-      ) // Only confirmed orders with Razorpay payments count for revenue
-      .map(order => ({
-        id: order.orderId,
-        transactionId: order.razorpayPaymentId || '',
-        orderId: order.orderId,
-        customerId: order.userId || '',
-        customerName: `${order.address?.firstName || ''} ${order.address?.lastName || ''}`.trim() || 'Unknown Customer',
-        customerEmail: order.userEmail || '',
-        amount: (order.total || 0) - (order.shipping || 0) - (order.totalCommission || order.commission || 0), // Vendor earnings = total - shipping - commission
-        currency: 'INR',
-        paymentMethod: (order.paymentMethod || 'razorpay') as 'credit_card' | 'paypal' | 'bank_transfer' | 'cash_on_delivery' | 'stripe' | 'razorpay',
-        status: (order.paymentStatus || 'pending') as 'pending' | 'completed' | 'failed' | 'refunded' | 'cancelled',
-        gateway: 'razorpay',
-        gatewayTransactionId: order.razorpayPaymentId || '',
-        fees: 0,
-        tax: 0,
-        description: `Payment for order ${order.orderId}`,
-        metadata: {
-          razorpayOrderId: order.razorpayOrderId || '',
-          orderStatus: order.orderStatus || 'pending',
-          vendorId: order.vendor || '',
-          vendorName: order.vendorName || '',
-          vendorEmail: order.vendorEmail || ''
-        },
-        createdAt: order.createdAt || new Date().toISOString(),
-        updatedAt: order.updatedAt || new Date().toISOString()
-      }));
-  }, [orders, currentVendor]);
+    let filteredOrders = vendorOrders.filter(order => 
+      order.paymentStatus && 
+      order.razorpayPaymentId && 
+      order.orderStatus === 'confirmed'
+    ); // Only confirmed orders with Razorpay payments count for revenue
+
+    // Apply date filtering
+    if (selectedPeriod === 'custom' && startDate && endDate) {
+      // Custom date range filter
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      end.setHours(23, 59, 59, 999); // Include the entire end date
+      filteredOrders = filteredOrders.filter(order => {
+        const orderDate = new Date(order.createdAt || order.updatedAt || new Date());
+        return orderDate >= start && orderDate <= end;
+      });
+    } else if (selectedPeriod !== 'all' && selectedPeriod !== 'custom') {
+      // Preset period filter
+      const now = new Date();
+      const periodDays = {
+        '7d': 7,
+        '30d': 30,
+        '90d': 90,
+        '1y': 365
+      };
+      const days = periodDays[selectedPeriod as keyof typeof periodDays] || 30;
+      const cutoffDate = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
+      filteredOrders = filteredOrders.filter(order => {
+        const orderDate = new Date(order.createdAt || order.updatedAt || new Date());
+        return orderDate >= cutoffDate;
+      });
+    }
+    
+    return filteredOrders.map(order => ({
+      id: order.orderId,
+      transactionId: order.razorpayPaymentId || '',
+      orderId: order.orderId,
+      customerId: order.userId || '',
+      customerName: `${order.address?.firstName || ''} ${order.address?.lastName || ''}`.trim() || 'Unknown Customer',
+      customerEmail: order.userEmail || '',
+      amount: (order.total || 0) - (order.shipping || 0) - (order.totalCommission || order.commission || 0), // Vendor earnings = total - shipping - commission
+      currency: 'INR',
+      paymentMethod: (order.paymentMethod || 'razorpay') as 'credit_card' | 'paypal' | 'bank_transfer' | 'cash_on_delivery' | 'stripe' | 'razorpay',
+      status: (order.paymentStatus || 'pending') as 'pending' | 'completed' | 'failed' | 'refunded' | 'cancelled',
+      gateway: 'razorpay',
+      gatewayTransactionId: order.razorpayPaymentId || '',
+      fees: 0,
+      tax: 0,
+      description: `Payment for order ${order.orderId}`,
+      metadata: {
+        razorpayOrderId: order.razorpayOrderId || '',
+        orderStatus: order.orderStatus || 'pending',
+        vendorId: order.vendor || '',
+        vendorName: order.vendorName || '',
+        vendorEmail: order.vendorEmail || ''
+      },
+      createdAt: order.createdAt || new Date().toISOString(),
+      updatedAt: order.updatedAt || new Date().toISOString()
+    }));
+  }, [orders, currentVendor, selectedPeriod, startDate, endDate]);
 
 
   const analytics: PaymentAnalytics = useMemo(() => {
@@ -233,6 +271,67 @@ export function VendorPaymentsAnalytics() {
     return <Badge className={config.className}>{config.label}</Badge>;
   };
 
+  const exportToCSV = () => {
+    const headers = [
+      'Transaction ID',
+      'Order ID', 
+      'Customer Name',
+      'Customer Email',
+      'Amount (Earnings)',
+      'Currency',
+      'Payment Method',
+      'Status',
+      'Gateway',
+      'Gateway Transaction ID',
+      'Description',
+      'Created At',
+      'Updated At'
+    ];
+
+    const csvData = allPayments.map(payment => [
+      payment.transactionId,
+      payment.orderId,
+      payment.customerName,
+      payment.customerEmail,
+      payment.amount,
+      payment.currency,
+      payment.paymentMethod,
+      payment.status,
+      payment.gateway,
+      payment.gatewayTransactionId || '',
+      payment.description,
+      new Date(payment.createdAt).toLocaleString(),
+      new Date(payment.updatedAt).toLocaleString()
+    ]);
+
+    const csvContent = [headers, ...csvData]
+      .map(row => row.map(field => `"${field}"`).join(','))
+      .join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    
+    if (link.download !== undefined) {
+      const url = URL.createObjectURL(blob);
+      link.setAttribute('href', url);
+      
+      // Generate filename with date range info
+      let filename = 'vendor_earnings_export';
+      if (selectedPeriod === 'custom' && startDate && endDate) {
+        filename += `_${format(startDate, 'yyyy-MM-dd')}_to_${format(endDate, 'yyyy-MM-dd')}`;
+      } else if (selectedPeriod !== 'all') {
+        filename += `_${selectedPeriod}`;
+      }
+      filename += `_${format(new Date(), 'yyyy-MM-dd_HH-mm-ss')}.csv`;
+      
+      link.setAttribute('download', filename);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+  };
+
   if (!currentVendor) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -265,6 +364,94 @@ export function VendorPaymentsAnalytics() {
 
   return (
     <div className="space-y-6">
+      {/* Filters */}
+      <div className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center">
+        <div>
+          <h2 className="text-2xl font-bold tracking-tight">Vendor Payment Analytics</h2>
+          <p className="text-muted-foreground">
+            Your earnings and transaction analytics
+          </p>
+        </div>
+        
+        <div className="flex items-center gap-2">
+          <Select value={selectedPeriod} onValueChange={(value) => {
+            setSelectedPeriod(value);
+            if (value !== 'custom') {
+              setStartDate(undefined);
+              setEndDate(undefined);
+            }
+          }}>
+            <SelectTrigger className="w-[120px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="7d">Last 7 days</SelectItem>
+              <SelectItem value="30d">Last 30 days</SelectItem>
+              <SelectItem value="90d">Last 90 days</SelectItem>
+              <SelectItem value="1y">Last year</SelectItem>
+              <SelectItem value="custom">Custom Range</SelectItem>
+              <SelectItem value="all">All time</SelectItem>
+            </SelectContent>
+          </Select>
+
+          {selectedPeriod === 'custom' && (
+            <>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className={cn(
+                      "w-[140px] justify-start text-left font-normal",
+                      !startDate && "text-muted-foreground"
+                    )}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {startDate ? format(startDate, "PPP") : "Start date"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0">
+                  <Calendar
+                    mode="single"
+                    selected={startDate}
+                    onSelect={setStartDate}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
+
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className={cn(
+                      "w-[140px] justify-start text-left font-normal",
+                      !endDate && "text-muted-foreground"
+                    )}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {endDate ? format(endDate, "PPP") : "End date"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0">
+                  <Calendar
+                    mode="single"
+                    selected={endDate}
+                    onSelect={setEndDate}
+                    disabled={(date) => startDate ? date < startDate : false}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
+            </>
+          )}
+
+          <Button variant="outline" size="sm" onClick={exportToCSV}>
+            <Download className="mr-2 h-4 w-4" />
+            Export CSV
+          </Button>
+        </div>
+      </div>
+
       {/* Summary Cards */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card>

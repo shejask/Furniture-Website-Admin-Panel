@@ -9,6 +9,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Calendar } from '@/components/ui/calendar';
 import { 
   DollarSign, 
   TrendingUp, 
@@ -22,8 +24,11 @@ import {
   Activity,
   ArrowUpRight,
   ArrowDownRight,
-  Search
+  Search,
+  Calendar as CalendarIcon
 } from 'lucide-react';
+import { format } from 'date-fns';
+import { cn } from '@/lib/utils';
 import { useFirebaseData } from '@/hooks/use-firebase-database';
 import { useOrders } from '@/hooks/use-orders';
 import { type Payment, type PaymentAnalytics } from '../utils/form-schema';
@@ -34,6 +39,8 @@ export function PaymentsAnalytics() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string>('all');
+  const [startDate, setStartDate] = useState<Date | undefined>(undefined);
+  const [endDate, setEndDate] = useState<Date | undefined>(undefined);
 
   const { orders, loading: ordersLoading } = useOrders();
   const { data: customers } = useFirebaseData('customers');
@@ -106,7 +113,16 @@ export function PaymentsAnalytics() {
       '1y': 365
     };
     
-    if (selectedPeriod !== 'all') {
+    if (selectedPeriod === 'custom' && startDate && endDate) {
+      // Custom date range filter
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      end.setHours(23, 59, 59, 999); // Include the entire end date
+      filtered = filtered.filter(payment => {
+        const paymentDate = new Date(payment.createdAt);
+        return paymentDate >= start && paymentDate <= end;
+      });
+    } else if (selectedPeriod !== 'all' && selectedPeriod !== 'custom') {
       const days = periodDays[selectedPeriod as keyof typeof periodDays] || 30;
       const cutoffDate = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
       filtered = filtered.filter(payment => new Date(payment.createdAt) >= cutoffDate);
@@ -138,7 +154,7 @@ export function PaymentsAnalytics() {
     }
 
     return filtered;
-  }, [allPayments, selectedPeriod, selectedCurrency, selectedStatus, selectedPaymentMethod, searchQuery]);
+  }, [allPayments, selectedPeriod, selectedCurrency, selectedStatus, selectedPaymentMethod, searchQuery, startDate, endDate]);
 
   const analytics: PaymentAnalytics = useMemo(() => {
     const totalRevenue = filteredPayments.reduce((sum, payment) => sum + payment.amount, 0);
@@ -328,6 +344,67 @@ export function PaymentsAnalytics() {
     }).format(amount);
   };
 
+  const exportToCSV = () => {
+    const headers = [
+      'Transaction ID',
+      'Order ID', 
+      'Customer Name',
+      'Customer Email',
+      'Amount',
+      'Currency',
+      'Payment Method',
+      'Status',
+      'Gateway',
+      'Gateway Transaction ID',
+      'Description',
+      'Created At',
+      'Updated At'
+    ];
+
+    const csvData = filteredPayments.map(payment => [
+      payment.transactionId,
+      payment.orderId,
+      payment.customerName,
+      payment.customerEmail,
+      payment.amount,
+      payment.currency,
+      payment.paymentMethod,
+      payment.status,
+      payment.gateway,
+      payment.gatewayTransactionId || '',
+      payment.description,
+      new Date(payment.createdAt).toLocaleString(),
+      new Date(payment.updatedAt).toLocaleString()
+    ]);
+
+    const csvContent = [headers, ...csvData]
+      .map(row => row.map(field => `"${field}"`).join(','))
+      .join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    
+    if (link.download !== undefined) {
+      const url = URL.createObjectURL(blob);
+      link.setAttribute('href', url);
+      
+      // Generate filename with date range info
+      let filename = 'payments_export';
+      if (selectedPeriod === 'custom' && startDate && endDate) {
+        filename += `_${format(startDate, 'yyyy-MM-dd')}_to_${format(endDate, 'yyyy-MM-dd')}`;
+      } else if (selectedPeriod !== 'all') {
+        filename += `_${selectedPeriod}`;
+      }
+      filename += `_${format(new Date(), 'yyyy-MM-dd_HH-mm-ss')}.csv`;
+      
+      link.setAttribute('download', filename);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+  };
+
   if (ordersLoading) {
     return (
       <div className="space-y-6">
@@ -397,7 +474,13 @@ export function PaymentsAnalytics() {
         </div>
         
         <div className="flex items-center gap-2">
-          <Select value={selectedPeriod} onValueChange={setSelectedPeriod}>
+          <Select value={selectedPeriod} onValueChange={(value) => {
+            setSelectedPeriod(value);
+            if (value !== 'custom') {
+              setStartDate(undefined);
+              setEndDate(undefined);
+            }
+          }}>
             <SelectTrigger className="w-[120px]">
               <SelectValue />
             </SelectTrigger>
@@ -406,9 +489,61 @@ export function PaymentsAnalytics() {
               <SelectItem value="30d">Last 30 days</SelectItem>
               <SelectItem value="90d">Last 90 days</SelectItem>
               <SelectItem value="1y">Last year</SelectItem>
+              <SelectItem value="custom">Custom Range</SelectItem>
               <SelectItem value="all">All time</SelectItem>
             </SelectContent>
           </Select>
+
+          {selectedPeriod === 'custom' && (
+            <>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className={cn(
+                      "w-[140px] justify-start text-left font-normal",
+                      !startDate && "text-muted-foreground"
+                    )}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {startDate ? format(startDate, "PPP") : "Start date"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0">
+                  <Calendar
+                    mode="single"
+                    selected={startDate}
+                    onSelect={setStartDate}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
+
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className={cn(
+                      "w-[140px] justify-start text-left font-normal",
+                      !endDate && "text-muted-foreground"
+                    )}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {endDate ? format(endDate, "PPP") : "End date"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0">
+                  <Calendar
+                    mode="single"
+                    selected={endDate}
+                    onSelect={setEndDate}
+                    disabled={(date) => startDate ? date < startDate : false}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
+            </>
+          )}
 
           <Select value={selectedCurrency} onValueChange={setSelectedCurrency}>
             <SelectTrigger className="w-[100px]">
@@ -449,9 +584,9 @@ export function PaymentsAnalytics() {
             </SelectContent>
           </Select>
 
-          <Button variant="outline" size="sm">
+          <Button variant="outline" size="sm" onClick={exportToCSV}>
             <Download className="mr-2 h-4 w-4" />
-            Export
+            Export CSV
           </Button>
         </div>
       </div>
